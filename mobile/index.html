@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GemmaLink</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f0f;
+      color: #f0f0f0;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 16px 20px;
+      background: #1a1a1a;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; }
+    #status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #ff4444; flex-shrink: 0;
+    }
+    #status-dot.ready { background: #44ff88; }
+
+    main { flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 16px; }
+
+    /* Camera / Preview area */
+    #preview-container {
+      position: relative;
+      width: 100%;
+      background: #1a1a1a;
+      border-radius: 12px;
+      overflow: hidden;
+      aspect-ratio: 4/3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #preview-container video,
+    #preview-container img#snapshot {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    #snapshot { display: none; }
+    #cam-placeholder {
+      color: #555;
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 20px;
+    }
+
+    /* Preset mode buttons */
+    .presets {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .preset-btn {
+      flex-shrink: 0;
+      background: #1e1e2e;
+      border: 1px solid #333;
+      color: #ccc;
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .preset-btn:hover, .preset-btn.active {
+      background: #5865f2;
+      border-color: #5865f2;
+      color: #fff;
+    }
+
+    /* Question input */
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+    #question {
+      flex: 1;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #f0f0f0;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      resize: none;
+      min-height: 48px;
+    }
+    #question:focus { outline: none; border-color: #5865f2; }
+
+    /* Action buttons */
+    .actions { display: flex; gap: 8px; }
+    .btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    #btn-camera { background: #2a2a3a; color: #ccc; }
+    #btn-ask    { background: #5865f2; color: #fff; }
+
+    /* Answer area */
+    #answer-box {
+      background: #1a1a1a;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      min-height: 80px;
+      white-space: pre-wrap;
+      color: #e0e0e0;
+      display: none;
+    }
+    #answer-box.visible { display: block; }
+    #answer-box.loading { color: #888; font-style: italic; }
+
+    .clear-btn {
+      background: none;
+      border: 1px solid #333;
+      color: #888;
+      border-radius: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      width: 100%;
+    }
+    .clear-btn:hover { border-color: #555; color: #ccc; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div id="status-dot" title="LLM status"></div>
+  <h1>GemmaLink</h1>
+</header>
+
+<main>
+
+  <!-- Camera Preview -->
+  <div id="preview-container">
+    <video id="video" autoplay playsinline></video>
+    <img id="snapshot" alt="captured" />
+    <p id="cam-placeholder">Tap "Camera" to start</p>
+  </div>
+
+  <!-- Preset Modes -->
+  <div class="presets">
+    <button class="preset-btn active" data-q="">Free question</button>
+    <button class="preset-btn" data-q="What are these controls? Explain each symbol in simple terms.">Appliance symbols</button>
+    <button class="preset-btn" data-q="Summarise this document. Highlight any important numbers or dates.">Summarise document</button>
+    <button class="preset-btn" data-q="What does this label or warning mean?">Label / warning</button>
+    <button class="preset-btn" data-q="Explain how to use this step by step.">How to use</button>
+  </div>
+
+  <!-- Question input -->
+  <div class="input-row">
+    <textarea id="question" rows="2" placeholder="Ask anything about what you see…"></textarea>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="actions">
+    <button class="btn" id="btn-camera">📷 Camera</button>
+    <button class="btn" id="btn-ask" disabled>Ask Gemma</button>
+  </div>
+
+  <!-- Answer -->
+  <div id="answer-box"></div>
+  <button class="clear-btn" id="btn-clear" style="display:none">Clear</button>
+
+</main>
+
+<script>
+  const video      = document.getElementById('video');
+  const snapshot   = document.getElementById('snapshot');
+  const placeholder = document.getElementById('cam-placeholder');
+  const btnCamera  = document.getElementById('btn-camera');
+  const btnAsk     = document.getElementById('btn-ask');
+  const btnClear   = document.getElementById('btn-clear');
+  const questionEl = document.getElementById('question');
+  const answerBox  = document.getElementById('answer-box');
+  const statusDot  = document.getElementById('status-dot');
+
+  let stream = null;
+  let capturedBlob = null;
+  let cameraActive = false;
+
+  // --- Status polling ---
+  async function pollStatus() {
+    try {
+      const r = await fetch('/status');
+      const d = await r.json();
+      statusDot.className = d.ready ? 'ready' : '';
+    } catch { statusDot.className = ''; }
+  }
+  pollStatus();
+  setInterval(pollStatus, 5000);
+
+  // --- Preset buttons ---
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (btn.dataset.q) questionEl.value = btn.dataset.q;
+    });
+  });
+
+  // --- Camera toggle ---
+  btnCamera.addEventListener('click', async () => {
+    if (cameraActive) {
+      // Capture frame
+      const canvas = document.createElement('canvas');
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      canvas.toBlob(blob => {
+        capturedBlob = blob;
+        snapshot.src = URL.createObjectURL(blob);
+        snapshot.style.display = 'block';
+        video.style.display = 'none';
+        btnCamera.textContent = '🔄 Retake';
+        btnAsk.disabled = false;
+      }, 'image/jpeg', 0.85);
+    } else {
+      // Start camera
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 } },
+          audio: false
+        });
+        video.srcObject = stream;
+        video.style.display = 'block';
+        placeholder.style.display = 'none';
+        snapshot.style.display = 'none';
+        cameraActive = true;
+        capturedBlob = null;
+        btnCamera.textContent = '📸 Capture';
+        btnAsk.disabled = false;
+      } catch (e) {
+        alert('Camera access denied or unavailable: ' + e.message);
+      }
+    }
+  });
+
+  // --- Ask ---
+  btnAsk.addEventListener('click', async () => {
+    const question = questionEl.value.trim() || 'What do you see? Explain clearly.';
+
+    answerBox.textContent = 'Thinking…';
+    answerBox.className = 'visible loading';
+    btnClear.style.display = 'none';
+    btnAsk.disabled = true;
+
+    const form = new FormData();
+    form.append('question', question);
+    if (capturedBlob) form.append('image', capturedBlob, 'photo.jpg');
+
+    try {
+      const resp = await fetch('/ask', { method: 'POST', body: form });
+      if (!resp.ok) throw new Error('Server error: ' + resp.status);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullText = '';
+      answerBox.className = 'visible';
+      answerBox.textContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6);
+          if (payload === '[DONE]') break;
+          try {
+            const text = JSON.parse(payload);
+            if (text && !text.startsWith('[ERROR]')) {
+              fullText += text;
+              answerBox.textContent = fullText;
+            } else if (text.startsWith('[ERROR]')) {
+              answerBox.textContent = text;
+            }
+          } catch { /* skip malformed chunk */ }
+        }
+      }
+    } catch (e) {
+      answerBox.textContent = 'Error: ' + e.message;
+    }
+
+    btnAsk.disabled = false;
+    btnClear.style.display = 'block';
+  });
+
+  // --- Clear ---
+  btnClear.addEventListener('click', () => {
+    answerBox.className = '';
+    answerBox.textContent = '';
+    btnClear.style.display = 'none';
+    capturedBlob = null;
+    snapshot.style.display = 'none';
+    if (stream) {
+      video.style.display = 'block';
+      btnCamera.textContent = '📸 Capture';
+    } else {
+      placeholder.style.display = 'block';
+      btnCamera.textContent = '📷 Camera';
+      cameraActive = false;
+    }
+    btnAsk.disabled = !stream;
+  });
+</script>
+</body>
+</html>

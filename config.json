@@ -1,0 +1,9 @@
+{
+  "http_port":  "8080",
+  "https_port": "8443",
+  "llama_port": "11434",
+  "model_path": "models/gemma-4-e4b.gguf",
+  "llama_bin":  "bin/linux/llama-server",
+  "upload_dir": "uploads",
+  "context_size": 4096
+}
