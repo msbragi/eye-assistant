@@ -23,10 +23,22 @@ func NewHandlers(cfg *Config, sidecar *Sidecar) *Handlers {
 	return &Handlers{cfg: cfg, sidecar: sidecar}
 }
 
-// refreshLLM rebuilds the LLMClient using the sidecar's current port.
+// refreshLLM rebuilds the LLMClient when needed.
+// Remote mode: use the configured remote endpoint directly.
+// Local mode: use the port the sidecar is actually listening on.
 func (h *Handlers) refreshLLM() {
-	if port := h.sidecar.Port(); port != "" && (h.llm == nil) {
-		h.llm = NewLLMClient(port)
+	if h.llm != nil {
+		return
+	}
+	if h.cfg.IsRemote() {
+		h.llm = NewLLMClient(h.cfg.LlamaRemote.Endpoint)
+		return
+	}
+	if port := h.sidecar.Port(); port != "" {
+		// Use the actual port the sidecar bound to (may differ from config if
+		// the preferred port was taken).
+		ep := "http://127.0.0.1:" + port
+		h.llm = NewLLMClient(ep)
 	}
 }
 
@@ -118,31 +130,54 @@ func (h *Handlers) HandleAsk(w http.ResponseWriter, r *http.Request) {
 // GET /api/status — extended JSON status for admin dashboard
 // -----------------------------------------------------------------
 func (h *Handlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
-	llamaPort := h.sidecar.Port()
-	ready := llamaPort != ""
+	remote := h.cfg.IsRemote()
 
-	// Check binary
-	binPresent := false
-	if _, err := os.Stat(h.cfg.LlamaBin); err == nil {
-		binPresent = true
+	var ready bool
+	var llamaAddr string
+
+	if remote {
+		// For remote: probe the endpoint directly
+		client := &http.Client{Timeout: 3 * time.Second}
+		resp, err := client.Get(h.cfg.LlamaRemote.Endpoint + "/v1/models")
+		if err == nil {
+			resp.Body.Close()
+			ready = resp.StatusCode < 500
+		}
+		llamaAddr = h.cfg.LlamaRemote.Endpoint
+	} else {
+		port := h.sidecar.Port()
+		ready = port != ""
+		if port != "" {
+			llamaAddr = "127.0.0.1:" + port
+		}
 	}
 
-	// Check model
+	// Binary + model only meaningful in local mode
+	binPresent := false
+	if !remote {
+		if _, err := os.Stat(h.cfg.LlamaLocal.LlamaBin); err == nil {
+			binPresent = true
+		}
+	}
+
 	modelPresent := false
 	var modelSize int64
-	if fi, err := os.Stat(h.cfg.ModelPath); err == nil {
-		modelPresent = true
-		modelSize = fi.Size()
+	if !remote {
+		if fi, err := os.Stat(h.cfg.LlamaLocal.ModelPath); err == nil {
+			modelPresent = true
+			modelSize = fi.Size()
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
+		"remote_mode":   remote,
 		"ready":         ready,
-		"llama_port":    llamaPort,
-		"model_path":    h.cfg.ModelPath,
+		"llama_addr":    llamaAddr,
+		"model_path":    h.cfg.LlamaLocal.ModelPath,
 		"model_present": modelPresent,
 		"model_size":    modelSize,
-		"bin_path":      h.cfg.LlamaBin,
+		"bin_path":      h.cfg.LlamaLocal.LlamaBin,
 		"bin_present":   binPresent,
 	})
 }
@@ -175,7 +210,6 @@ func (h *Handlers) HandleLlamaStop(w http.ResponseWriter, r *http.Request) {
 // -----------------------------------------------------------------
 
 // downloadTargets maps target names to download URLs and destination paths.
-// URLs are placeholders — replace with actual Hugging Face URLs when available.
 var downloadTargets = map[string][2]string{
 	"llama": {
 		llamaBinaryURL(),
@@ -304,9 +338,51 @@ func jsonEscape(s string) string {
 }
 
 // -----------------------------------------------------------------
+// GET /api/llama/test?endpoint=http://host:port
+// Probes the given endpoint's /v1/models and returns reachability + model name.
+// -----------------------------------------------------------------
+func (h *Handlers) HandleLlamaTest(w http.ResponseWriter, r *http.Request) {
+	endpoint := r.URL.Query().Get("endpoint")
+	if endpoint == "" {
+		http.Error(w, "endpoint parameter required", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(endpoint + "/v1/models")
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]any{"reachable": false})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 500 {
+		json.NewEncoder(w).Encode(map[string]any{"reachable": false})
+		return
+	}
+
+	// Try to extract first model name from OpenAI-compatible /v1/models response
+	var modelsResp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	modelName := ""
+	if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err == nil && len(modelsResp.Data) > 0 {
+		modelName = modelsResp.Data[0].ID
+	}
+
+	json.NewEncoder(w).Encode(map[string]any{
+		"reachable":  true,
+		"model_name": modelName,
+	})
+}
+
+// -----------------------------------------------------------------
 // GET /api/config — returns current config as JSON
 // POST /api/config — saves updated config fields to config.json
-// Note: port changes require a server restart to take effect.
 // -----------------------------------------------------------------
 func (h *Handlers) HandleConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -317,38 +393,32 @@ func (h *Handlers) HandleConfig(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(h.cfg)
 
 	case http.MethodPost:
-		var incoming struct {
-			HTTPPort  string `json:"http_port"`
-			HTTPSPort string `json:"https_port"`
-			LlamaPort string `json:"llama_port"`
-			Hostname  string `json:"hostname"`
-		}
+		var incoming Config
 		if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
 			http.Error(w, "invalid JSON", http.StatusBadRequest)
 			return
 		}
 
-		// Validate: ports must be non-empty numeric strings
-		for _, p := range []string{incoming.HTTPPort, incoming.HTTPSPort, incoming.LlamaPort} {
-			if p == "" {
-				http.Error(w, "ports must not be empty", http.StatusBadRequest)
+		// Validate ports (1-65535)
+		for _, p := range []string{incoming.HTTPPort, incoming.HTTPSPort} {
+			if !validPort(p) {
+				http.Error(w, "invalid port value: "+p, http.StatusBadRequest)
 				return
-			}
-			for _, c := range p {
-				if c < '0' || c > '9' {
-					http.Error(w, "invalid port value: "+p, http.StatusBadRequest)
-					return
-				}
 			}
 		}
 
 		portsChanged := incoming.HTTPPort != h.cfg.HTTPPort ||
 			incoming.HTTPSPort != h.cfg.HTTPSPort
 
+		h.cfg.HTTPHost = incoming.HTTPHost
 		h.cfg.HTTPPort = incoming.HTTPPort
 		h.cfg.HTTPSPort = incoming.HTTPSPort
-		h.cfg.LlamaPort = incoming.LlamaPort
-		h.cfg.Hostname = incoming.Hostname
+		h.cfg.UploadDir = incoming.UploadDir
+		h.cfg.LlamaLocal = incoming.LlamaLocal
+		h.cfg.LlamaRemote = incoming.LlamaRemote
+
+		// Reset LLM client so next /ask rebuilds with new endpoint
+		h.llm = nil
 
 		if err := h.cfg.Save(ConfigFile); err != nil {
 			http.Error(w, "failed to save config: "+err.Error(), http.StatusInternalServerError)
@@ -363,6 +433,21 @@ func (h *Handlers) HandleConfig(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// validPort returns true if s is a numeric string representing a port 1-65535.
+func validPort(s string) bool {
+	if s == "" {
+		return false
+	}
+	var n int
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n >= 1 && n <= 65535
 }
 
 // -----------------------------------------------------------------

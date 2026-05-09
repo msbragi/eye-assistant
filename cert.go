@@ -86,10 +86,12 @@ func DefaultCertSANs(cfg *Config) ([]string, []net.IP) {
 	hostnames := []string{"localhost"}
 	ips := []net.IP{net.ParseIP("127.0.0.1")}
 
-	if cfg.Hostname != "" && cfg.Hostname != "localhost" {
-		hostnames = append(hostnames, cfg.Hostname)
-		if ip := net.ParseIP(cfg.Hostname); ip != nil {
+	// Include http_host if it's a meaningful hostname (not localhost/0.0.0.0)
+	if h := cfg.HTTPHost; h != "" && h != "localhost" && h != "0.0.0.0" {
+		if ip := net.ParseIP(h); ip != nil {
 			ips = append(ips, ip)
+		} else {
+			hostnames = append(hostnames, h)
 		}
 	}
 

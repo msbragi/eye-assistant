@@ -24,7 +24,13 @@ func NewSidecar(cfg *Config) *Sidecar {
 }
 
 // Start launches llama-server on a free port (or the configured one).
+// In remote mode this is a no-op — the user manages the remote server.
 func (s *Sidecar) Start() error {
+	if s.cfg.IsRemote() {
+		log.Println("Remote llama mode — sidecar not started. Manage llama-server on the remote host.")
+		return nil
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -32,22 +38,26 @@ func (s *Sidecar) Start() error {
 		return nil // already running
 	}
 
-	port, err := findFreePort(s.cfg.LlamaPort)
+	preferredPort := endpointPort(s.cfg.LlamaLocal.Endpoint)
+	if preferredPort == "" {
+		preferredPort = "11434"
+	}
+	port, err := findFreePort(preferredPort)
 	if err != nil {
 		return fmt.Errorf("finding free port: %w", err)
 	}
 
-	if _, err := os.Stat(s.cfg.LlamaBin); os.IsNotExist(err) {
-		return fmt.Errorf("llama-server binary not found at %s", s.cfg.LlamaBin)
+	if _, err := os.Stat(s.cfg.LlamaLocal.LlamaBin); os.IsNotExist(err) {
+		return fmt.Errorf("llama-server binary not found at %s", s.cfg.LlamaLocal.LlamaBin)
 	}
-	if _, err := os.Stat(s.cfg.ModelPath); os.IsNotExist(err) {
-		return fmt.Errorf("model not found at %s — run the downloader first", s.cfg.ModelPath)
+	if _, err := os.Stat(s.cfg.LlamaLocal.ModelPath); os.IsNotExist(err) {
+		return fmt.Errorf("model not found at %s — run the downloader first", s.cfg.LlamaLocal.ModelPath)
 	}
 
-	s.cmd = exec.Command(s.cfg.LlamaBin,
-		"--model", s.cfg.ModelPath,
-		"--port", s.port,
-		"--ctx-size", strconv.Itoa(s.cfg.ContextSize),
+	s.cmd = exec.Command(s.cfg.LlamaLocal.LlamaBin,
+		"--model", s.cfg.LlamaLocal.ModelPath,
+		"--port", port,
+		"--ctx-size", strconv.Itoa(s.cfg.LlamaLocal.ContextSize),
 		"--host", "127.0.0.1",
 	)
 	s.cmd.Stdout = os.Stdout

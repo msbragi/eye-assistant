@@ -1,9 +1,17 @@
 {
-  "http_port":  "8080",
+  "http_host": "localhost",
+  "http_port": "8080",
   "https_port": "8443",
-  "llama_port": "11434",
-  "model_path": "models/gemma-4-e4b.gguf",
-  "llama_bin":  "bin/linux/llama-server",
-  "upload_dir": "uploads",
-  "context_size": 4096
+  "llama_remote": {
+    "enabled": false,
+    "endpoint": "http://192.168.1.32:11434"
+  },
+  "llama_local": {
+    "enabled": true,
+    "endpoint": "http://localhost:11434",
+    "model_path": "models/gemma-4-e4b.gguf",
+    "llama_bin": "bin/linux/llama-server",
+    "context_size": 4096
+  },
+  "upload_dir": "uploads"
 }

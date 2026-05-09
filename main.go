@@ -42,6 +42,7 @@ func main() {
 	mux.HandleFunc("/api/download", handlers.HandleDownload)
 	mux.HandleFunc("/api/config", handlers.HandleConfig)
 	mux.HandleFunc("/api/cert/regenerate", handlers.HandleCertRegenerate)
+	mux.HandleFunc("/api/llama/test", handlers.HandleLlamaTest)
 	// Static files (index.html → UA redirect, eye.html, admin.html)
 	mux.Handle("/", http.FileServer(http.Dir("static")))
 

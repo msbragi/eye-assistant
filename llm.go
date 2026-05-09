@@ -17,8 +17,9 @@ type LLMClient struct {
 	baseURL string
 }
 
-func NewLLMClient(port string) *LLMClient {
-	return &LLMClient{baseURL: "http://127.0.0.1:" + port}
+// NewLLMClient creates a client for the given base endpoint (e.g. "http://localhost:11434").
+func NewLLMClient(endpoint string) *LLMClient {
+	return &LLMClient{baseURL: endpoint}
 }
 
 // ChatMessage represents a single message in the conversation.
