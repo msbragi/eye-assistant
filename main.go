@@ -6,7 +6,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -43,11 +45,13 @@ func main() {
 	mux.HandleFunc("/api/config", handlers.HandleConfig)
 	mux.HandleFunc("/api/cert/regenerate", handlers.HandleCertRegenerate)
 	mux.HandleFunc("/api/llama/test", handlers.HandleLlamaTest)
+	mux.HandleFunc("/api/qr", handlers.HandleQR)
+	mux.HandleFunc("/api/qr-url", handlers.HandleQRURL)
 	// Static files (index.html → UA redirect, eye.html, admin.html)
 	mux.Handle("/", http.FileServer(http.Dir("static")))
 
-	// Detect LAN IP for QR code
-	lanIP := getLANIP()
+	// Detect mobile-accessible IP for QR code (WSL-aware)
+	lanIP := getMobileIP()
 	mobileURL := fmt.Sprintf("https://%s:%s", lanIP, cfg.HTTPSPort)
 
 	printQR(mobileURL)
@@ -119,6 +123,76 @@ func getLANIPs() []net.IP {
 		}
 	}
 	return result
+}
+
+// getMobileIP returns the IP a smartphone should connect to.
+// In WSL2 the Linux internal IP is not reachable from the LAN;
+// the Windows host IP (read from /etc/resolv.conf) must be used instead.
+func getMobileIP() string {
+	if isWSL() {
+		if ip := wslHostIP(); ip != "" {
+			return ip
+		}
+	}
+	return getLANIP()
+}
+
+// isWSL reports whether the process is running inside Windows Subsystem for Linux.
+func isWSL() bool {
+	data, err := os.ReadFile("/proc/version")
+	if err != nil {
+		return false
+	}
+	lower := strings.ToLower(string(data))
+	return strings.Contains(lower, "microsoft") || strings.Contains(lower, "wsl")
+}
+
+// wslHostIP returns the Windows host's real LAN IPv4 address from WSL2.
+// Tries powershell.exe first, falls back to ipconfig.exe parsing.
+func wslHostIP() string {
+	// --- Primary: powershell.exe (precise, filter by prefix length) ---
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-Command",
+		"(Get-NetIPAddress -AddressFamily IPv4 | "+
+			"Where-Object { $_.IPAddress -notlike '127.*' -and "+
+			"$_.IPAddress -notlike '169.*' -and "+
+			"$_.IPAddress -notlike '172.*' } | "+
+			"Sort-Object -Property PrefixLength | "+
+			"Select-Object -ExpandProperty IPAddress -First 1)").Output()
+	if err == nil {
+		if ip := strings.TrimSpace(string(out)); net.ParseIP(ip) != nil {
+			return ip
+		}
+	}
+
+	// --- Fallback: ipconfig.exe (works on any Windows locale) ---
+	// Lines look like:
+	//   IPv4 Address. . . : 192.168.0.65          (EN)
+	//   Indirizzo IPv4. . : 192.168.0.65           (IT)
+	out, err = exec.Command("ipconfig.exe").Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if !strings.Contains(line, "IPv4") {
+			continue
+		}
+		idx := strings.LastIndex(line, ":")
+		if idx < 0 {
+			continue
+		}
+		ip := strings.TrimSpace(line[idx+1:])
+		if net.ParseIP(ip) == nil {
+			continue
+		}
+		// Skip loopback, link-local, and WSL2 virtual adapter range
+		if strings.HasPrefix(ip, "127.") ||
+			strings.HasPrefix(ip, "169.") ||
+			strings.HasPrefix(ip, "172.") {
+			continue
+		}
+		return ip
+	}
+	return ""
 }
 
 // printQR prints the QR code for the mobile URL to stdout.

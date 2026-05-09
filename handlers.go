@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	qrcode "github.com/skip2/go-qrcode"
 )
 
 type Handlers struct {
@@ -329,6 +331,29 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendEvt(map[string]any{"pct": 100, "bytes": downloaded, "total": downloaded, "done": true})
+}
+
+// -----------------------------------------------------------------
+// GET /api/qr     — PNG QR code pointing to /eye.html on the mobile IP.
+// GET /api/qr-url — JSON {"url":"https://..."} with the same URL.
+// Both use getMobileIP() which is WSL-aware (returns Windows host IP in WSL2).
+// -----------------------------------------------------------------
+func (h *Handlers) HandleQR(w http.ResponseWriter, r *http.Request) {
+	mobileURL := fmt.Sprintf("https://%s:%s/eye.html", getMobileIP(), h.cfg.HTTPSPort)
+	png, err := qrcode.Encode(mobileURL, qrcode.Medium, 256)
+	if err != nil {
+		http.Error(w, "QR generation failed", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(png) //nolint:errcheck
+}
+
+func (h *Handlers) HandleQRURL(w http.ResponseWriter, r *http.Request) {
+	mobileURL := fmt.Sprintf("https://%s:%s/eye.html", getMobileIP(), h.cfg.HTTPSPort)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"url": mobileURL}) //nolint:errcheck
 }
 
 // jsonEscape wraps text in a JSON string for safe SSE transport.

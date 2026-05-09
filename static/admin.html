@@ -4,260 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GemmaLink — Admin</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f0f;
-      color: #e0e0e0;
-      min-height: 100vh;
-    }
-
-    /* ── Header ──────────────────────────────────────── */
-    header {
-      background: #1a1a1a;
-      border-bottom: 1px solid #2a2a2a;
-      padding: 14px 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-    }
-    header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.3px; flex-shrink: 0; }
-    header h1 span { color: #5865f2; }
-
-    .header-links a {
-      color: #888;
-      text-decoration: none;
-      font-size: 0.85rem;
-      border: 1px solid #333;
-      padding: 5px 12px;
-      border-radius: 6px;
-      white-space: nowrap;
-    }
-    .header-links a:hover { color: #fff; border-color: #555; }
-
-    /* ── Tabs ────────────────────────────────────────── */
-    .tab-bar { display: flex; gap: 4px; }
-    .tab-btn {
-      background: none;
-      border: 1px solid transparent;
-      color: #888;
-      font-size: 0.9rem;
-      font-weight: 600;
-      padding: 6px 20px;
-      border-radius: 7px;
-      cursor: pointer;
-      transition: color 0.15s, border-color 0.15s, background 0.15s;
-    }
-    .tab-btn:hover { color: #ccc; border-color: #333; }
-    .tab-btn.active { color: #fff; background: #23243a; border-color: #5865f2; }
-
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-
-    /* ── Dashboard grid ──────────────────────────────── */
-    .container {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 32px 24px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-    @media (max-width: 720px) { .container { grid-template-columns: 1fr; } }
-
-    /* ── Config form layout ──────────────────────────── */
-    .container-form {
-      max-width: 680px;
-      margin: 0 auto;
-      padding: 32px 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-
-    /* ── Cards (dashboard) ───────────────────────────── */
-    .card {
-      background: #1a1a1a;
-      border: 1px solid #2a2a2a;
-      border-radius: 12px;
-      padding: 20px;
-    }
-    .card.full-width { grid-column: 1 / -1; }
-    .card h2, .form-section h3 {
-      font-size: 0.78rem;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      color: #666;
-      margin-bottom: 16px;
-    }
-
-    /* ── Form sections (config tab) ──────────────────── */
-    .form-section {
-      background: #1a1a1a;
-      border: 1px solid #2a2a2a;
-      border-radius: 12px;
-      padding: 22px 24px;
-    }
-    .form-row {
-      display: grid;
-      grid-template-columns: 190px 1fr;
-      align-items: start;
-      gap: 10px 16px;
-      margin-bottom: 14px;
-    }
-    .form-row:last-child { margin-bottom: 0; }
-    .form-label {
-      font-size: 0.85rem;
-      color: #bbb;
-      padding-top: 7px;
-    }
-    .form-label small {
-      display: block;
-      font-size: 0.72rem;
-      color: #555;
-      margin-top: 2px;
-    }
-    .form-input {
-      font-size: 0.85rem;
-      color: #ccc;
-      background: #111;
-      border: 1px solid #2a2a2a;
-      border-radius: 6px;
-      padding: 7px 10px;
-      width: 100%;
-      font-family: monospace;
-      transition: border-color 0.15s;
-    }
-    .form-input:focus { outline: none; border-color: #5865f2; }
-
-    .inline-row { display: flex; gap: 8px; align-items: center; }
-    .inline-row .form-input { flex: 1; min-width: 0; }
-
-    /* ── Resource bars ───────────────────────────────── */
-    .resource-row { margin-bottom: 14px; }
-    .resource-row:last-child { margin-bottom: 0; }
-    .resource-label {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.85rem;
-      color: #aaa;
-      margin-bottom: 5px;
-    }
-    .resource-label span:last-child { color: #e0e0e0; font-weight: 600; }
-    .bar-track { background: #2a2a2a; border-radius: 4px; height: 6px; overflow: hidden; }
-    .bar-fill { height: 100%; border-radius: 4px; background: #5865f2; transition: width 0.4s ease; }
-    .bar-fill.warn { background: #f0a500; }
-    .bar-fill.crit { background: #ff4444; }
-
-    /* ── Status indicators ───────────────────────────── */
-    .status-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 0;
-      border-bottom: 1px solid #222;
-      font-size: 0.9rem;
-    }
-    .status-item:last-child { border-bottom: none; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-    .dot.ok      { background: #44ff88; }
-    .dot.warn    { background: #f0a500; }
-    .dot.missing { background: #ff4444; }
-    .dot.unknown { background: #555; }
-    .status-label { flex: 1; color: #ccc; }
-    .status-value { color: #888; font-size: 0.8rem; }
-
-    /* ── Buttons ─────────────────────────────────────── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 16px;
-      border: none;
-      border-radius: 7px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.15s;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .btn:disabled { opacity: 0.4; cursor: default; }
-    .btn-primary   { background: #5865f2; color: #fff; }
-    .btn-secondary { background: #2a2a3a; color: #ccc; border: 1px solid #333; }
-    .btn-danger    { background: #3a1a1a; color: #ff6666; border: 1px solid #5a2a2a; }
-    .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
-
-    /* ── Download progress ───────────────────────────── */
-    .progress-wrap { margin-top: 12px; display: none; }
-    .progress-wrap.visible { display: block; }
-    .progress-track { background: #2a2a2a; border-radius: 4px; height: 8px; overflow: hidden; margin-bottom: 6px; }
-    .progress-fill { height: 100%; border-radius: 4px; background: #5865f2; width: 0%; transition: width 0.3s ease; }
-    .progress-label { font-size: 0.78rem; color: #666; }
-
-    /* ── Log ─────────────────────────────────────────── */
-    #log-box {
-      background: #111;
-      border-radius: 8px;
-      padding: 12px;
-      font-family: monospace;
-      font-size: 0.78rem;
-      color: #888;
-      height: 140px;
-      overflow-y: auto;
-      line-height: 1.6;
-    }
-    #log-box .log-ok   { color: #44ff88; }
-    #log-box .log-warn { color: #f0a500; }
-    #log-box .log-err  { color: #ff4444; }
-
-    .actions-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-    .gpu-row { color: #555; font-size: 0.82rem; margin-top: 8px; font-style: italic; }
-
-    /* ── Misc ────────────────────────────────────────── */
-    .badge { font-size: 0.78rem; padding: 3px 8px; border-radius: 5px; font-weight: 600; }
-    .badge-ok  { background: #1a3a2a; color: #44ff88; }
-    .badge-err { background: #3a1a1a; color: #ff6666; }
-
-    .warn-text { color: #f0a500; font-size: 0.78rem; }
-    .muted     { color: #555; font-size: 0.78rem; font-weight: 400; text-transform: none; letter-spacing: 0; }
-    .hint-text { font-size: 0.8rem; color: #555; line-height: 1.5; margin-bottom: 16px; }
-
-    .remote-notice {
-      background: #1a1a2a;
-      border: 1px solid #2a2a4a;
-      border-radius: 8px;
-      padding: 12px 14px;
-      font-size: 0.83rem;
-      color: #8899ff;
-      line-height: 1.5;
-      margin-top: 14px;
-    }
-
-    /* ── Radio group ─────────────────────────────────── */
-    .radio-group { display: flex; flex-direction: column; gap: 8px; }
-    .radio-label {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      font-size: 0.88rem;
-      color: #ccc;
-      cursor: pointer;
-    }
-    .radio-label input[type=radio] { accent-color: #5865f2; width: 15px; height: 15px; cursor: pointer; }
-    .radio-label.active { color: #fff; }
-    .mode-panel { margin-top: 14px; }
-  </style>
+  <link href="css/admin.css" rel="stylesheet">
 </head>
 <body>
 
 <header>
   <h1>Gemma<span>Link</span> <span style="color:#444;font-weight:400;font-size:0.9rem">/ admin</span></h1>
   <div class="tab-bar">
-    <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+    <button class="tab-btn active" data-tab="qr">QR Code</button>
+    <button class="tab-btn" data-tab="dashboard">Dashboard</button>
     <button class="tab-btn" data-tab="config">Config</button>
   </div>
   <div class="header-links">
@@ -265,8 +20,31 @@
   </div>
 </header>
 
+<!-- ═══════════ QR CODE TAB ═══════════ -->
+<div id="tab-qr" class="tab-panel active">
+<div class="container" style="max-width:520px">
+
+  <div class="card full-width" style="text-align:center">
+    <h2>Mobile Access</h2>
+    <p style="color:#aaa;margin:0 0 20px;font-size:0.9rem">
+      Scan with your smartphone camera to open the Eye assistant
+    </p>
+    <img id="qr-img" src="/api/qr" alt="QR code"
+         style="width:220px;height:220px;border-radius:12px;background:#fff;padding:12px;display:block;margin:0 auto 16px" />
+    <div id="qr-url"
+         style="font-size:0.8rem;color:#888;font-family:monospace;word-break:break-all;margin-bottom:16px">
+      …
+    </div>
+    <p style="font-size:0.75rem;color:#555;line-height:1.6;margin:0">
+      ⚠ On first visit, accept the self-signed certificate warning in your browser.
+    </p>
+  </div>
+
+</div>
+</div><!-- /tab-qr -->
+
 <!-- ═══════════ DASHBOARD TAB ═══════════ -->
-<div id="tab-dashboard" class="tab-panel active">
+<div id="tab-dashboard" class="tab-panel">
 <div class="container">
 
   <!-- System Resources -->
@@ -501,12 +279,10 @@
   let remoteMode = false;
   function applyRemoteMode(remote) {
     remoteMode = remote;
-    document.getElementById('card-binary').style.display    = remote ? 'none' : '';
-    document.getElementById('card-model').style.display     = remote ? 'none' : '';
-    document.getElementById('row-stop').style.display       = remote ? 'none' : '';
-    document.getElementById('remote-notice').style.display  = remote ? 'block' : 'none';
-    document.getElementById('section-local').style.display  = remote ? 'none' : '';
-    document.getElementById('local-mode-label').textContent = remote ? '(remote — not applicable)' : '(local)';
+    document.getElementById('card-binary').style.display   = remote ? 'none' : '';
+    document.getElementById('card-model').style.display    = remote ? 'none' : '';
+    document.getElementById('row-stop').style.display      = remote ? 'none' : '';
+    document.getElementById('remote-notice').style.display = remote ? 'block' : 'none';
   }
 
   // ─── Poll /api/sysinfo ─────────────────────────────────────────
@@ -740,8 +516,19 @@
     setTimeout(() => { st.textContent = ''; st.style.color = ''; }, 5000);
   });
 
+  // ─── QR Code ───────────────────────────────────────────────────
+  async function loadQR() {
+    try {
+      const d = await fetch('/api/qr-url').then(r => r.json());
+      document.getElementById('qr-url').textContent = d.url;
+      // Bust cache so the image always reflects the current IP/port
+      document.getElementById('qr-img').src = '/api/qr?' + Date.now();
+    } catch(e) { /* silent — server may not be ready */ }
+  }
+
   // ─── Init ──────────────────────────────────────────────────────
   log('Admin dashboard loaded', 'ok');
+  loadQR();
   loadConfig();
   pollSysinfo();
   pollStatus();
