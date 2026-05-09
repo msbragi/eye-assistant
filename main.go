@@ -33,9 +33,15 @@ func main() {
 	handlers := NewHandlers(cfg, sidecar)
 
 	mux := http.NewServeMux()
+	// AI endpoints
 	mux.HandleFunc("/ask", handlers.HandleAsk)
-	mux.HandleFunc("/status", handlers.HandleStatus)
-	mux.Handle("/", http.FileServer(http.Dir("mobile")))
+	// API endpoints for admin dashboard
+	mux.HandleFunc("/api/status", handlers.HandleStatus)
+	mux.HandleFunc("/api/sysinfo", handlers.HandleSysInfo)
+	mux.HandleFunc("/api/llama/stop", handlers.HandleLlamaStop)
+	mux.HandleFunc("/api/download", handlers.HandleDownload)
+	// Static files (index.html → UA redirect, eye.html, admin.html)
+	mux.Handle("/", http.FileServer(http.Dir("static")))
 
 	// Detect LAN IP for QR code
 	lanIP := getLANIP()

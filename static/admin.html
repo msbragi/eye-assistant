@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GemmaLink — Admin</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1a1a;
+      border-bottom: 1px solid #2a2a2a;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.3px; }
+    header h1 span { color: #5865f2; }
+    .header-links a {
+      color: #888;
+      text-decoration: none;
+      font-size: 0.85rem;
+      border: 1px solid #333;
+      padding: 5px 12px;
+      border-radius: 6px;
+    }
+    .header-links a:hover { color: #fff; border-color: #555; }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 720px) { .container { grid-template-columns: 1fr; } }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card.full-width { grid-column: 1 / -1; }
+    .card h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #666;
+      margin-bottom: 16px;
+    }
+
+    /* Resource bars */
+    .resource-row { margin-bottom: 14px; }
+    .resource-row:last-child { margin-bottom: 0; }
+    .resource-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      color: #aaa;
+      margin-bottom: 5px;
+    }
+    .resource-label span:last-child { color: #e0e0e0; font-weight: 600; }
+    .bar-track {
+      background: #2a2a2a;
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: #5865f2;
+      transition: width 0.4s ease;
+    }
+    .bar-fill.warn  { background: #f0a500; }
+    .bar-fill.crit  { background: #ff4444; }
+
+    /* Status indicators */
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #222;
+      font-size: 0.9rem;
+    }
+    .status-item:last-child { border-bottom: none; }
+    .dot {
+      width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot.ok      { background: #44ff88; }
+    .dot.warn    { background: #f0a500; }
+    .dot.missing { background: #ff4444; }
+    .dot.unknown { background: #555; }
+    .status-label { flex: 1; color: #ccc; }
+    .status-value { color: #888; font-size: 0.8rem; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 7px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn-primary  { background: #5865f2; color: #fff; }
+    .btn-secondary{ background: #2a2a3a; color: #ccc; border: 1px solid #333; }
+    .btn-danger   { background: #3a1a1a; color: #ff6666; border: 1px solid #5a2a2a; }
+
+    /* Download progress */
+    .progress-wrap { margin-top: 12px; display: none; }
+    .progress-wrap.visible { display: block; }
+    .progress-track {
+      background: #2a2a2a;
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: #5865f2;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .progress-label { font-size: 0.78rem; color: #666; }
+
+    /* Config table */
+    .config-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 8px 16px;
+      align-items: center;
+    }
+    .config-key { font-size: 0.8rem; color: #666; font-family: monospace; }
+    .config-val {
+      font-size: 0.85rem;
+      color: #ccc;
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 5px;
+      padding: 5px 10px;
+      width: 100%;
+      font-family: monospace;
+    }
+
+    /* Log */
+    #log-box {
+      background: #111;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: #888;
+      height: 140px;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+    #log-box .log-ok   { color: #44ff88; }
+    #log-box .log-warn { color: #f0a500; }
+    #log-box .log-err  { color: #ff4444; }
+
+    .actions-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .gpu-row { color: #555; font-size: 0.82rem; margin-top: 8px; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Gemma<span>Link</span> <span style="color:#444;font-weight:400;font-size:0.9rem">/ admin</span></h1>
+  <div class="header-links">
+    <a href="/eye.html">📷 Open Eye (mobile view)</a>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- System Resources -->
+  <div class="card">
+    <h2>System Resources</h2>
+    <div class="resource-row">
+      <div class="resource-label"><span>RAM</span><span id="ram-label">—</span></div>
+      <div class="bar-track"><div class="bar-fill" id="ram-bar" style="width:0%"></div></div>
+    </div>
+    <div class="resource-row">
+      <div class="resource-label"><span>CPU</span><span id="cpu-label">—</span></div>
+      <div class="bar-track"><div class="bar-fill" id="cpu-bar" style="width:0%"></div></div>
+    </div>
+    <div class="resource-row">
+      <div class="resource-label"><span>Disk</span><span id="disk-label">—</span></div>
+      <div class="bar-track"><div class="bar-fill" id="disk-bar" style="width:0%"></div></div>
+    </div>
+    <div class="gpu-row" id="gpu-info">GPU: detecting…</div>
+  </div>
+
+  <!-- Server Status -->
+  <div class="card">
+    <h2>Server Status</h2>
+    <div class="status-item">
+      <div class="dot unknown" id="dot-server"></div>
+      <span class="status-label">Go HTTP server</span>
+      <span class="status-value" id="val-server">—</span>
+    </div>
+    <div class="status-item">
+      <div class="dot unknown" id="dot-llama"></div>
+      <span class="status-label">llama-server</span>
+      <span class="status-value" id="val-llama">—</span>
+    </div>
+    <div class="status-item">
+      <div class="dot unknown" id="dot-model"></div>
+      <span class="status-label">Gemma model</span>
+      <span class="status-value" id="val-model">—</span>
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-danger" id="btn-stop-llama" disabled>Stop llama-server</button>
+    </div>
+  </div>
+
+  <!-- llama-server Setup -->
+  <div class="card">
+    <h2>llama-server Binary</h2>
+    <div class="status-item">
+      <div class="dot unknown" id="dot-bin"></div>
+      <span class="status-label" id="label-bin">Checking…</span>
+      <span class="status-value" id="val-bin">—</span>
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="btn-dl-llama">Download llama-server</button>
+    </div>
+    <div class="progress-wrap" id="prog-llama-wrap">
+      <div class="progress-track"><div class="progress-fill" id="prog-llama-fill"></div></div>
+      <div class="progress-label" id="prog-llama-label">0%</div>
+    </div>
+  </div>
+
+  <!-- Model Setup -->
+  <div class="card">
+    <h2>Gemma 4 Model</h2>
+    <div class="status-item">
+      <div class="dot unknown" id="dot-gguf"></div>
+      <span class="status-label" id="label-gguf">Checking…</span>
+      <span class="status-value" id="val-gguf">—</span>
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="btn-dl-e2b">Download E2B (2B)</button>
+      <button class="btn btn-secondary" id="btn-dl-e4b">Download E4B (4B)</button>
+    </div>
+    <div class="progress-wrap" id="prog-model-wrap">
+      <div class="progress-track"><div class="progress-fill" id="prog-model-fill"></div></div>
+      <div class="progress-label" id="prog-model-label">0%</div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="card full-width">
+    <h2>Activity Log</h2>
+    <div id="log-box"></div>
+  </div>
+
+</div>
+
+<script>
+  // --- Logging ---
+  function log(msg, type = '') {
+    const box = document.getElementById('log-box');
+    const line = document.createElement('div');
+    if (type) line.className = 'log-' + type;
+    const ts = new Date().toLocaleTimeString();
+    line.textContent = `[${ts}] ${msg}`;
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // --- Bar helper ---
+  function setBar(barId, pct) {
+    const el = document.getElementById(barId);
+    el.style.width = pct + '%';
+    el.className = 'bar-fill' + (pct > 89 ? ' crit' : pct > 69 ? ' warn' : '');
+  }
+
+  // --- Poll /api/sysinfo ---
+  async function pollSysinfo() {
+    try {
+      const r = await fetch('/api/sysinfo');
+      const d = await r.json();
+
+      // RAM
+      const ramPct = Math.round((d.ram_used / d.ram_total) * 100);
+      document.getElementById('ram-label').textContent =
+        `${fmtGB(d.ram_used)} / ${fmtGB(d.ram_total)} (${ramPct}%)`;
+      setBar('ram-bar', ramPct);
+
+      // CPU
+      document.getElementById('cpu-label').textContent = `${d.cpu_pct.toFixed(1)}%`;
+      setBar('cpu-bar', Math.round(d.cpu_pct));
+
+      // Disk
+      const diskPct = Math.round((d.disk_used / d.disk_total) * 100);
+      document.getElementById('disk-label').textContent =
+        `${fmtGB(d.disk_used)} / ${fmtGB(d.disk_total)} (${diskPct}%)`;
+      setBar('disk-bar', diskPct);
+
+      // GPU
+      const gpuEl = document.getElementById('gpu-info');
+      if (d.gpu_name) {
+        gpuEl.textContent = `GPU: ${d.gpu_name} — VRAM ${fmtGB(d.gpu_vram_used)} / ${fmtGB(d.gpu_vram_total)}`;
+        gpuEl.style.color = '#aaa';
+      } else {
+        gpuEl.textContent = 'GPU: not detected (CPU inference mode)';
+      }
+    } catch(e) {
+      log('sysinfo fetch failed: ' + e.message, 'err');
+    }
+  }
+
+  // --- Poll /api/status ---
+  async function pollStatus() {
+    try {
+      const r = await fetch('/api/status');
+      const d = await r.json();
+
+      // Server always up if we got a response
+      setDot('dot-server', 'ok');
+      document.getElementById('val-server').textContent = 'running';
+
+      // llama-server
+      if (d.ready) {
+        setDot('dot-llama', 'ok');
+        document.getElementById('val-llama').textContent = 'port ' + d.llama_port;
+        document.getElementById('btn-stop-llama').disabled = false;
+      } else {
+        setDot('dot-llama', 'missing');
+        document.getElementById('val-llama').textContent = 'not running';
+        document.getElementById('btn-stop-llama').disabled = true;
+      }
+
+      // Binary
+      if (d.bin_present) {
+        setDot('dot-bin', 'ok');
+        document.getElementById('label-bin').textContent = 'Binary found';
+        document.getElementById('val-bin').textContent = d.bin_path;
+      } else {
+        setDot('dot-bin', 'missing');
+        document.getElementById('label-bin').textContent = 'Binary missing';
+        document.getElementById('val-bin').textContent = d.bin_path;
+      }
+
+      // Model
+      if (d.model_present) {
+        setDot('dot-model', 'ok');
+        setDot('dot-gguf', 'ok');
+        document.getElementById('label-gguf').textContent = 'Model found';
+        document.getElementById('val-model').textContent = fmtGB(d.model_size) + ' GB';
+        document.getElementById('val-gguf').textContent = d.model_path;
+      } else {
+        setDot('dot-model', 'missing');
+        setDot('dot-gguf', 'missing');
+        document.getElementById('label-gguf').textContent = 'Model not found';
+        document.getElementById('val-model').textContent = 'missing';
+        document.getElementById('val-gguf').textContent = d.model_path;
+      }
+    } catch(e) {
+      setDot('dot-server', 'missing');
+      log('status fetch failed: ' + e.message, 'err');
+    }
+  }
+
+  function setDot(id, state) {
+    document.getElementById(id).className = 'dot ' + state;
+  }
+
+  function fmtGB(bytes) {
+    return (bytes / 1073741824).toFixed(1) + ' GB';
+  }
+
+  // --- Download llama-server ---
+  document.getElementById('btn-dl-llama').addEventListener('click', async () => {
+    log('Starting llama-server download…', 'ok');
+    startDownload('/api/download?target=llama', 'prog-llama-wrap', 'prog-llama-fill', 'prog-llama-label');
+  });
+
+  // --- Download model ---
+  document.getElementById('btn-dl-e2b').addEventListener('click', () => {
+    log('Starting Gemma 4 E2B download…', 'ok');
+    startDownload('/api/download?target=model-e2b', 'prog-model-wrap', 'prog-model-fill', 'prog-model-label');
+  });
+  document.getElementById('btn-dl-e4b').addEventListener('click', () => {
+    log('Starting Gemma 4 E4B download…', 'ok');
+    startDownload('/api/download?target=model-e4b', 'prog-model-wrap', 'prog-model-fill', 'prog-model-label');
+  });
+
+  async function startDownload(url, wrapId, fillId, labelId) {
+    const wrap = document.getElementById(wrapId);
+    const fill = document.getElementById(fillId);
+    const label = document.getElementById(labelId);
+    wrap.classList.add('visible');
+    fill.style.width = '0%';
+    label.textContent = 'Starting…';
+
+    try {
+      const resp = await fetch(url);
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.pct !== undefined) {
+              fill.style.width = evt.pct + '%';
+              label.textContent = `${evt.pct}% — ${fmtGB(evt.bytes)} / ${fmtGB(evt.total)}`;
+            }
+            if (evt.done) {
+              label.textContent = 'Done!';
+              fill.style.background = '#44ff88';
+              log('Download complete.', 'ok');
+              pollStatus();
+            }
+            if (evt.error) {
+              label.textContent = 'Error: ' + evt.error;
+              fill.style.background = '#ff4444';
+              log('Download error: ' + evt.error, 'err');
+            }
+          } catch { /* skip */ }
+        }
+      }
+    } catch(e) {
+      label.textContent = 'Failed: ' + e.message;
+      log('Download failed: ' + e.message, 'err');
+    }
+  }
+
+  // --- Stop llama-server ---
+  document.getElementById('btn-stop-llama').addEventListener('click', async () => {
+    await fetch('/api/llama/stop', { method: 'POST' });
+    log('Sent stop signal to llama-server', 'warn');
+    setTimeout(pollStatus, 1000);
+  });
+
+  // --- Init ---
+  log('Admin dashboard loaded', 'ok');
+  pollSysinfo();
+  pollStatus();
+  setInterval(pollSysinfo, 5000);
+  setInterval(pollStatus, 4000);
+</script>
+</body>
+</html>

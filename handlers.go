@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -114,18 +115,186 @@ func (h *Handlers) HandleAsk(w http.ResponseWriter, r *http.Request) {
 }
 
 // -----------------------------------------------------------------
-// GET /status — returns JSON with server and sidecar state
+// GET /api/status — extended JSON status for admin dashboard
 // -----------------------------------------------------------------
 func (h *Handlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	llamaPort := h.sidecar.Port()
 	ready := llamaPort != ""
 
+	// Check binary
+	binPresent := false
+	if _, err := os.Stat(h.cfg.LlamaBin); err == nil {
+		binPresent = true
+	}
+
+	// Check model
+	modelPresent := false
+	var modelSize int64
+	if fi, err := os.Stat(h.cfg.ModelPath); err == nil {
+		modelPresent = true
+		modelSize = fi.Size()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"ready":      ready,
-		"llama_port": llamaPort,
-		"model":      h.cfg.ModelPath,
+		"ready":         ready,
+		"llama_port":    llamaPort,
+		"model_path":    h.cfg.ModelPath,
+		"model_present": modelPresent,
+		"model_size":    modelSize,
+		"bin_path":      h.cfg.LlamaBin,
+		"bin_present":   binPresent,
 	})
+}
+
+// -----------------------------------------------------------------
+// GET /api/sysinfo — CPU, RAM, disk, GPU snapshot
+// -----------------------------------------------------------------
+func (h *Handlers) HandleSysInfo(w http.ResponseWriter, r *http.Request) {
+	info := GetSysInfo()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(info)
+}
+
+// -----------------------------------------------------------------
+// POST /api/llama/stop — stop the llama-server sidecar
+// -----------------------------------------------------------------
+func (h *Handlers) HandleLlamaStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	h.sidecar.Stop()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
+}
+
+// -----------------------------------------------------------------
+// GET /api/download?target=llama|model-e2b|model-e4b
+// Streams download progress as SSE: {"pct":42,"bytes":N,"total":N}
+// -----------------------------------------------------------------
+
+// downloadTargets maps target names to download URLs and destination paths.
+// URLs are placeholders — replace with actual Hugging Face URLs when available.
+var downloadTargets = map[string][2]string{
+	"llama": {
+		llamaBinaryURL(),
+		"bin/linux/llama-server",
+	},
+	"model-e2b": {
+		"https://huggingface.co/bartowski/google_gemma-3-2b-it-GGUF/resolve/main/google_gemma-3-2b-it-Q4_K_M.gguf",
+		"models/gemma-4-e2b.gguf",
+	},
+	"model-e4b": {
+		"https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF/resolve/main/google_gemma-3-4b-it-Q4_K_M.gguf",
+		"models/gemma-4-e4b.gguf",
+	},
+}
+
+func llamaBinaryURL() string {
+	if runtime.GOOS == "windows" {
+		return "https://github.com/ggml-org/llama.cpp/releases/latest/download/llama-b5765-bin-win-avx2-x64.zip"
+	}
+	return "https://github.com/ggml-org/llama.cpp/releases/latest/download/llama-b5765-bin-ubuntu-x64.zip"
+}
+
+func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
+	target := r.URL.Query().Get("target")
+	entry, ok := downloadTargets[target]
+	if !ok {
+		http.Error(w, "unknown target", http.StatusBadRequest)
+		return
+	}
+	url, destPath := entry[0], entry[1]
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	sendEvt := func(v any) {
+		b, _ := json.Marshal(v)
+		fmt.Fprintf(w, "data: %s\n\n", b)
+		flusher.Flush()
+	}
+
+	// Ensure destination directory exists
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		sendEvt(map[string]string{"error": err.Error()})
+		return
+	}
+
+	resp, err := http.Get(url) //nolint:noctx
+	if err != nil {
+		sendEvt(map[string]string{"error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		sendEvt(map[string]string{"error": fmt.Sprintf("HTTP %d from upstream", resp.StatusCode)})
+		return
+	}
+
+	total := resp.ContentLength
+	tmp := destPath + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		sendEvt(map[string]string{"error": err.Error()})
+		return
+	}
+
+	var downloaded int64
+	buf := make([]byte, 32*1024)
+	lastReport := time.Now()
+
+	for {
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, werr := f.Write(buf[:n]); werr != nil {
+				f.Close()
+				os.Remove(tmp)
+				sendEvt(map[string]string{"error": werr.Error()})
+				return
+			}
+			downloaded += int64(n)
+			if time.Since(lastReport) > 300*time.Millisecond {
+				pct := 0
+				if total > 0 {
+					pct = int(downloaded * 100 / total)
+				}
+				sendEvt(map[string]any{"pct": pct, "bytes": downloaded, "total": total})
+				lastReport = time.Now()
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			f.Close()
+			os.Remove(tmp)
+			sendEvt(map[string]string{"error": readErr.Error()})
+			return
+		}
+	}
+
+	f.Close()
+	if err := os.Rename(tmp, destPath); err != nil {
+		sendEvt(map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Make binary executable on Linux/Mac
+	if strings.HasSuffix(destPath, "llama-server") {
+		os.Chmod(destPath, 0755) //nolint:errcheck
+	}
+
+	sendEvt(map[string]any{"pct": 100, "bytes": downloaded, "total": downloaded, "done": true})
 }
 
 // jsonEscape wraps text in a JSON string for safe SSE transport.
