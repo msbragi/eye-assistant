@@ -268,6 +268,34 @@
     </div>
   </div>
 
+  <!-- Configuration -->
+  <div class="card full-width">
+    <h2>Configuration <span id="cfg-restart-warn" style="display:none;color:#f0a500;font-size:0.75rem;text-transform:none;font-weight:400;margin-left:8px">⚠ Port changes require a server restart</span></h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+      <div>
+        <label style="display:block;font-size:0.78rem;color:#666;margin-bottom:5px">HTTP Port</label>
+        <input class="config-val" id="cfg-http-port" type="text" maxlength="5" />
+      </div>
+      <div>
+        <label style="display:block;font-size:0.78rem;color:#666;margin-bottom:5px">HTTPS Port</label>
+        <input class="config-val" id="cfg-https-port" type="text" maxlength="5" />
+      </div>
+      <div>
+        <label style="display:block;font-size:0.78rem;color:#666;margin-bottom:5px">llama.cpp Port</label>
+        <input class="config-val" id="cfg-llama-port" type="text" maxlength="5" />
+      </div>
+      <div>
+        <label style="display:block;font-size:0.78rem;color:#666;margin-bottom:5px">Hostname / IP <span style="color:#444">(optional)</span></label>
+        <input class="config-val" id="cfg-hostname" type="text" placeholder="e.g. gemmalink.local" />
+      </div>
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="btn-save-cfg">Save Configuration</button>
+      <button class="btn btn-secondary" id="btn-regen-cert">🔒 Regenerate SSL Certificate</button>
+      <span id="cfg-status" style="font-size:0.82rem;color:#666;align-self:center;margin-left:4px"></span>
+    </div>
+  </div>
+
   <!-- Log -->
   <div class="card full-width">
     <h2>Activity Log</h2>
@@ -461,8 +489,81 @@
     setTimeout(pollStatus, 1000);
   });
 
+  // --- Load config ---
+  async function loadConfig() {
+    try {
+      const r = await fetch('/api/config');
+      const d = await r.json();
+      document.getElementById('cfg-http-port').value  = d.http_port  || '';
+      document.getElementById('cfg-https-port').value = d.https_port || '';
+      document.getElementById('cfg-llama-port').value = d.llama_port || '';
+      document.getElementById('cfg-hostname').value   = d.hostname   || '';
+      log('Configuration loaded', 'ok');
+    } catch(e) { log('Failed to load config: ' + e.message, 'err'); }
+  }
+
+  // --- Save config ---
+  document.getElementById('btn-save-cfg').addEventListener('click', async () => {
+    const body = {
+      http_port:  document.getElementById('cfg-http-port').value.trim(),
+      https_port: document.getElementById('cfg-https-port').value.trim(),
+      llama_port: document.getElementById('cfg-llama-port').value.trim(),
+      hostname:   document.getElementById('cfg-hostname').value.trim(),
+    };
+    const statusEl = document.getElementById('cfg-status');
+    statusEl.textContent = 'Saving…';
+    try {
+      const r = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        statusEl.textContent = 'Saved ✓';
+        statusEl.style.color = '#44ff88';
+        document.getElementById('cfg-restart-warn').style.display = d.ports_changed ? 'inline' : 'none';
+        log('Configuration saved' + (d.ports_changed ? ' — restart required for port changes' : ''), d.ports_changed ? 'warn' : 'ok');
+      } else {
+        statusEl.textContent = 'Error';
+        statusEl.style.color = '#ff4444';
+      }
+    } catch(e) {
+      statusEl.textContent = 'Failed';
+      statusEl.style.color = '#ff4444';
+      log('Config save error: ' + e.message, 'err');
+    }
+    setTimeout(() => { statusEl.textContent = ''; statusEl.style.color = ''; }, 4000);
+  });
+
+  // --- Regenerate SSL cert ---
+  document.getElementById('btn-regen-cert').addEventListener('click', async () => {
+    const statusEl = document.getElementById('cfg-status');
+    statusEl.textContent = 'Generating…';
+    statusEl.style.color = '#888';
+    log('Regenerating SSL certificate…');
+    try {
+      const r = await fetch('/api/cert/regenerate', { method: 'POST' });
+      const d = await r.json();
+      if (d.ok) {
+        statusEl.textContent = 'Certificate generated ✓';
+        statusEl.style.color = '#44ff88';
+        log(`Certificate generated — SANs: ${d.hostnames.join(', ')} | IPs: ${d.ips.join(', ')}`, 'ok');
+      } else {
+        statusEl.textContent = 'Failed';
+        statusEl.style.color = '#ff4444';
+      }
+    } catch(e) {
+      statusEl.textContent = 'Failed';
+      statusEl.style.color = '#ff4444';
+      log('Cert error: ' + e.message, 'err');
+    }
+    setTimeout(() => { statusEl.textContent = ''; statusEl.style.color = ''; }, 5000);
+  });
+
   // --- Init ---
   log('Admin dashboard loaded', 'ok');
+  loadConfig();
   pollSysinfo();
   pollStatus();
   setInterval(pollSysinfo, 5000);

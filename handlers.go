@@ -302,3 +302,96 @@ func jsonEscape(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
+
+// -----------------------------------------------------------------
+// GET /api/config — returns current config as JSON
+// POST /api/config — saves updated config fields to config.json
+// Note: port changes require a server restart to take effect.
+// -----------------------------------------------------------------
+func (h *Handlers) HandleConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	switch r.Method {
+	case http.MethodGet:
+		json.NewEncoder(w).Encode(h.cfg)
+
+	case http.MethodPost:
+		var incoming struct {
+			HTTPPort  string `json:"http_port"`
+			HTTPSPort string `json:"https_port"`
+			LlamaPort string `json:"llama_port"`
+			Hostname  string `json:"hostname"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		// Validate: ports must be non-empty numeric strings
+		for _, p := range []string{incoming.HTTPPort, incoming.HTTPSPort, incoming.LlamaPort} {
+			if p == "" {
+				http.Error(w, "ports must not be empty", http.StatusBadRequest)
+				return
+			}
+			for _, c := range p {
+				if c < '0' || c > '9' {
+					http.Error(w, "invalid port value: "+p, http.StatusBadRequest)
+					return
+				}
+			}
+		}
+
+		portsChanged := incoming.HTTPPort != h.cfg.HTTPPort ||
+			incoming.HTTPSPort != h.cfg.HTTPSPort
+
+		h.cfg.HTTPPort = incoming.HTTPPort
+		h.cfg.HTTPSPort = incoming.HTTPSPort
+		h.cfg.LlamaPort = incoming.LlamaPort
+		h.cfg.Hostname = incoming.Hostname
+
+		if err := h.cfg.Save(ConfigFile); err != nil {
+			http.Error(w, "failed to save config: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]any{
+			"ok":            true,
+			"ports_changed": portsChanged,
+		})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// -----------------------------------------------------------------
+// POST /api/cert/regenerate — generates a new self-signed SSL cert
+// Uses the current hostname and all LAN IPs as SANs.
+// Takes effect immediately for new TLS connections (server stays running).
+// -----------------------------------------------------------------
+func (h *Handlers) HandleCertRegenerate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	hostnames, ips := DefaultCertSANs(h.cfg)
+	if err := GenerateSelfSignedCert(hostnames, ips); err != nil {
+		log.Println("Cert regeneration failed:", err)
+		http.Error(w, "cert generation failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("SSL cert regenerated — SANs: %v / IPs: %v", hostnames, ips)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"ok":        true,
+		"hostnames": hostnames,
+		"ips":       func() []string {
+			s := make([]string, len(ips))
+			for i, ip := range ips { s[i] = ip.String() }
+			return s
+		}(),
+	})
+}

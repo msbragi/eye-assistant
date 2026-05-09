@@ -40,6 +40,8 @@ func main() {
 	mux.HandleFunc("/api/sysinfo", handlers.HandleSysInfo)
 	mux.HandleFunc("/api/llama/stop", handlers.HandleLlamaStop)
 	mux.HandleFunc("/api/download", handlers.HandleDownload)
+	mux.HandleFunc("/api/config", handlers.HandleConfig)
+	mux.HandleFunc("/api/cert/regenerate", handlers.HandleCertRegenerate)
 	// Static files (index.html → UA redirect, eye.html, admin.html)
 	mux.Handle("/", http.FileServer(http.Dir("static")))
 
@@ -77,9 +79,19 @@ func main() {
 
 // getLANIP returns the first non-loopback IPv4 address of the machine.
 func getLANIP() string {
+	ips := getLANIPs()
+	if len(ips) > 0 {
+		return ips[0].String()
+	}
+	return "localhost"
+}
+
+// getLANIPs returns all non-loopback IPv4 addresses of the machine.
+func getLANIPs() []net.IP {
+	var result []net.IP
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return "localhost"
+		return result
 	}
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
@@ -101,11 +113,11 @@ func getLANIP() string {
 				continue
 			}
 			if ip4 := ip.To4(); ip4 != nil {
-				return ip4.String()
+				result = append(result, ip4)
 			}
 		}
 	}
-	return "localhost"
+	return result
 }
 
 // printQR prints the QR code for the mobile URL to stdout.

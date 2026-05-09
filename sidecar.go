@@ -36,7 +36,6 @@ func (s *Sidecar) Start() error {
 	if err != nil {
 		return fmt.Errorf("finding free port: %w", err)
 	}
-	s.port = port
 
 	if _, err := os.Stat(s.cfg.LlamaBin); os.IsNotExist(err) {
 		return fmt.Errorf("llama-server binary not found at %s", s.cfg.LlamaBin)
@@ -58,6 +57,7 @@ func (s *Sidecar) Start() error {
 		return fmt.Errorf("starting llama-server: %w", err)
 	}
 
+	s.port = port // set only after successful start
 	log.Printf("llama-server started (pid=%d) on port %s", s.cmd.Process.Pid, s.port)
 
 	// Wait until the server is ready (max 60s)

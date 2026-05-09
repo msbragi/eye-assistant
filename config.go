@@ -16,6 +16,7 @@ type Config struct {
 	LlamaBin    string `json:"llama_bin"`
 	UploadDir   string `json:"upload_dir"`
 	ContextSize int    `json:"context_size"`
+	Hostname    string `json:"hostname"` // custom hostname for QR URL and cert SAN
 }
 
 func loadConfig(path string) (*Config, error) {
@@ -41,4 +42,16 @@ func loadConfig(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Save writes the current config back to the JSON file.
+func (c *Config) Save(path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	enc.SetIndent("", "  ")
+	return enc.Encode(c)
 }
