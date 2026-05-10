@@ -3,11 +3,11 @@
   "http_port": "8080",
   "https_port": "8443",
   "llama_remote": {
-    "enabled": false,
-    "endpoint": "http://192.168.1.32:11434"
+    "enabled": true,
+    "endpoint": "http://172.26.240.1:8088"
   },
   "llama_local": {
-    "enabled": true,
+    "enabled": false,
     "endpoint": "http://localhost:11434",
     "model_path": "models/gemma-4-e4b.gguf",
     "llama_bin": "bin/linux/llama-server",

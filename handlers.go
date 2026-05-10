@@ -136,14 +136,26 @@ func (h *Handlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
 
 	var ready bool
 	var llamaAddr string
+	var modelPresent bool
+	var modelPath string
+	var modelSize int64
 
 	if remote {
-		// For remote: probe the endpoint directly
+		// For remote: probe /v1/models — check liveness and loaded model
 		client := &http.Client{Timeout: 3 * time.Second}
 		resp, err := client.Get(h.cfg.LlamaRemote.Endpoint + "/v1/models")
-		if err == nil {
+		if err == nil && resp.StatusCode < 500 {
+			ready = true
+			var payload struct {
+				Data []struct {
+					ID string `json:"id"`
+				} `json:"data"`
+			}
+			if jsonErr := json.NewDecoder(resp.Body).Decode(&payload); jsonErr == nil && len(payload.Data) > 0 {
+				modelPresent = true
+				modelPath = payload.Data[0].ID
+			}
 			resp.Body.Close()
-			ready = resp.StatusCode < 500
 		}
 		llamaAddr = h.cfg.LlamaRemote.Endpoint
 	} else {
@@ -162,13 +174,17 @@ func (h *Handlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	modelPresent := false
-	var modelSize int64
-	if !remote {
+	// modelPresent and modelPath are set in the remote block above (via /v1/models)
+	// or here for local mode
+	if !modelPresent && !remote {
 		if fi, err := os.Stat(h.cfg.LlamaLocal.ModelPath); err == nil {
 			modelPresent = true
 			modelSize = fi.Size()
+			modelPath = h.cfg.LlamaLocal.ModelPath
 		}
+	}
+	if modelPath == "" {
+		modelPath = h.cfg.LlamaLocal.ModelPath
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -176,7 +192,7 @@ func (h *Handlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
 		"remote_mode":   remote,
 		"ready":         ready,
 		"llama_addr":    llamaAddr,
-		"model_path":    h.cfg.LlamaLocal.ModelPath,
+		"model_path":    modelPath,
 		"model_present": modelPresent,
 		"model_size":    modelSize,
 		"bin_path":      h.cfg.LlamaLocal.LlamaBin,

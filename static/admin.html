@@ -336,17 +336,17 @@
           document.getElementById('label-bin').textContent = 'Binary missing';
           document.getElementById('val-bin').textContent   = d.bin_path;
         }
-        if (d.model_present) {
-          setDot('dot-model', 'ok'); setDot('dot-gguf', 'ok');
-          document.getElementById('label-gguf').textContent = 'Model found';
-          document.getElementById('val-model').textContent  = fmtGB(d.model_size);
-          document.getElementById('val-gguf').textContent   = d.model_path;
-        } else {
-          setDot('dot-model', 'missing'); setDot('dot-gguf', 'missing');
-          document.getElementById('label-gguf').textContent = 'Model not found';
-          document.getElementById('val-model').textContent  = 'missing';
-          document.getElementById('val-gguf').textContent   = d.model_path;
-        }
+      }
+      if (d.model_present) {
+        setDot('dot-model', 'ok'); setDot('dot-gguf', 'ok');
+        document.getElementById('label-gguf').textContent = 'Model found';
+        document.getElementById('val-model').textContent  = remoteMode ? d.model_path : fmtGB(d.model_size);
+        document.getElementById('val-gguf').textContent   = d.model_path;
+      } else {
+        setDot('dot-model', 'missing'); setDot('dot-gguf', 'missing');
+        document.getElementById('label-gguf').textContent = 'Model not found';
+        document.getElementById('val-model').textContent  = 'missing';
+        document.getElementById('val-gguf').textContent   = d.model_path;
       }
     } catch(e) {
       setDot('dot-server', 'missing');
