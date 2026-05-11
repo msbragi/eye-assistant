@@ -1,8 +1,10 @@
 # GemmaLink — Stato del Progetto
-**Aggiornato:** 9 Maggio 2026  
-**Submission Deadline:** 24 Maggio 2026 (15 giorni)  
+**Aggiornato:** 12 Maggio 2026  
+**Submission Deadline:** 24 Maggio 2026 (12 giorni)  
 **Repository:** https://github.com/msbragi/eye-assistant  
-**Ultimo commit verificato:** `3a7ddd9` — "Refactor: nested config structure + remote llama-server support"
+**Ultimo commit verificato:** in corso
+
+> **Stato:** ✅ Build & release system completato. In corso: test E2E su Windows (download llama-server → modello → inferenza).
 
 ---
 
@@ -27,28 +29,38 @@
 
 ```
 eye-assistant/
-├── main.go          # entry point, routing, getLANIP/getMobileIP/isWSL/wslHostIP
-├── config.go        # Config/LlamaLocal/LlamaRemote structs, load/save
-├── handlers.go      # tutti gli HTTP handlers
-├── llm.go           # LLMClient OpenAI-compatible
-├── sidecar.go       # gestione processo llama-server
-├── cert.go          # generazione self-signed cert TLS
-├── sysinfo.go       # CPU/RAM/Disk via gopsutil
-├── config.json      # configurazione runtime
+├── main.go           # entry point, routing, UA redirect server-side, cert auto-gen
+├── config.go         # Config structs, load/save, costanti path/URL modelli
+├── handlers.go       # tutti gli HTTP handlers, binary extraction (tar.gz/zip)
+├── llm.go            # LLMClient OpenAI-compatible
+├── sidecar.go        # gestione processo llama-server, LD_LIBRARY_PATH, waitForHealth
+├── cert.go           # generazione self-signed cert TLS (auto al primo avvio)
+├── sysinfo.go        # CPU/RAM/Disk via gopsutil
+├── static_dev.go     # [build tag: dev] static serving da disco
+├── static_prod.go    # [build tag: !dev] static embedded via go:embed
+├── config.json       # configurazione runtime
 ├── go.mod / go.sum
 ├── scripts/
-│   └── wsl-portforward.ps1   # port forward Windows→WSL2 (run as Admin)
+│   ├── build.sh             # release build: win|linux|all + versione → dist/releases/
+│   ├── build-dev.sh         # dev build con -tags dev
+│   └── wsl-portforward.ps1  # port forward Windows→WSL2 (run as Admin)
 ├── static/
-│   ├── index.html   # UA redirect: mobile→eye.html, desktop→admin.html
-│   ├── eye.html     # interfaccia smartphone (camera + ask)
-│   ├── admin.html   # dashboard PC [QR Code][Dashboard][Config]
-│   └── css/
-│       ├── eye.css
-│       └── admin.css
+│   ├── index.html    # fallback (redirect UA ora server-side in main.go)
+│   ├── eye.html      # interfaccia smartphone (camera + ask)
+│   ├── admin.html    # dashboard PC [QR Code][Dashboard][Config]
+│   ├── css/
+│   │   ├── eye.css
+│   │   └── admin.css
+│   └── js/
+│       └── admin.js  # logica JS dashboard, memory-based model filtering
 ├── bin/
-│   └── linux/       # llama-server binary (DA SCARICARE)
-├── models/          # gemma-4-e4b.gguf (DA SCARICARE)
-└── uploads/         # immagini temporanee
+│   ├── linux/        # llama-server + .so + symlinks soname
+│   └── windows/      # llama-server.exe + .dll (scaricato dal dashboard)
+├── models/           # gemma-4-e2b.gguf / mmproj (scaricati dal dashboard)
+├── uploads/          # immagini temporanee
+└── dist/             # [gitignore] staging + release artifacts
+    ├── staging/      # dir riusata tra build
+    └── releases/     # gemmalink-{ver}-{os}-amd64.{tar.gz|zip}
 ```
 
 ---
@@ -57,21 +69,24 @@ eye-assistant/
 
 ```json
 {
-  "http_host": "localhost",
-  "http_port": "8080",
-  "https_port": "8443",
   "llama_local": {
     "enabled": true,
     "endpoint": "http://localhost:11434",
-    "model_path": "models/gemma-4-e4b.gguf",
+    "model_path": "models/gemma-4-e2b.gguf",
+    "mmproj_path": "models/mmproj-gemma-4-e2b.gguf",
+    "vision_enabled": true,
     "llama_bin": "bin/linux/llama-server",
+    "llama_bin_version": "b9102",
     "context_size": 4096
   },
   "llama_remote": {
     "enabled": false,
     "endpoint": "http://192.168.1.32:11434"
   },
-  "upload_dir": "uploads"
+  "model_urls": {
+    "e2b": "<HuggingFace URL gemma-4-e2b Q4_K_M>",
+    "e4b": "<HuggingFace URL gemma-4-e4b Q4_K_M>"
+  }
 }
 ```
 
@@ -82,12 +97,15 @@ eye-assistant/
 | Method | Path | Descrizione |
 |---|---|---|
 | POST | `/ask` | multipart: image+question → SSE streaming LLM response |
-| GET | `/api/status` | stato server, llama-server, bin/model presente |
+| GET | `/api/status` | stato server, llama-server, bin/model presente, vision_enabled |
 | GET | `/api/sysinfo` | CPU/RAM/Disk/GPU |
 | GET | `/api/config` | config corrente JSON |
 | POST | `/api/config` | salva config |
+| POST | `/api/llama/start` | avvia llama-server sidecar (attende readiness) |
 | POST | `/api/llama/stop` | ferma llama-server sidecar |
-| GET | `/api/download?target=` | SSE progress: `llama`, `model-e2b`, `model-e4b` |
+| POST | `/api/vision/toggle` | abilita/disabilita mmproj, salva VisionEnabled |
+| GET | `/api/download?target=` | SSE progress: `llama`, `model-e2b`, `model-e4b`, `mmproj-e2b`, `mmproj-e4b` |
+| GET | `/api/llama/releases` | lista release llama.cpp da GitHub |
 | GET | `/api/llama/test?endpoint=` | verifica raggiungibilità llama-server |
 | POST | `/api/cert/regenerate` | rigenera SSL cert con SANs aggiornati |
 | GET | `/api/qr` | PNG QR code (256×256) per mobile URL |
@@ -121,71 +139,44 @@ Fa `netsh portproxy`: `0.0.0.0:8080/8443` → `<WSL2-IP>:8080/8443`
 
 - [x] **Go backend completo** — main.go, config.go, handlers.go, llm.go, sidecar.go, cert.go, sysinfo.go
 - [x] **Config struttura nested** — `llama_local` / `llama_remote` con `IsRemote()` / `ActiveEndpoint()`
+- [x] **VisionEnabled** — flag in config, toggle API, `--mmproj` condizionale al sidecar
 - [x] **Modalità remote** — llama-server su altro PC, sidecar skip in remote mode
-- [x] **SSL self-signed** — generazione automatica all'avvio se assente, regen via admin
+- [x] **SSL self-signed** — generazione automatica al primo avvio se `.ssl/cert.pem` assente
 - [x] **SSE streaming** — `/ask` e `/api/download` usano Server-Sent Events
 - [x] **eye.html** — camera, capture, preset mode, streaming response, status dot
-- [x] **admin.html** — 3 tab: [QR Code] [Dashboard] [Config]
-  - Tab QR: immagine QR + URL testuale
-  - Tab Dashboard: sysinfo bars, server status, binary/model cards, activity log
-  - Tab Config: radio Local/Remote, form completo, test connection, SSL regen
-- [x] **admin.css** — CSS estratto in file separato
-- [x] **QR code** — `/api/qr` PNG + `/api/qr-url` JSON, WSL-aware IP detection
-- [x] **WSL2 port forwarding** — script PowerShell `wsl-portforward.ps1`
-- [x] **Build pulito** — `go build .` senza errori
+- [x] **admin.html + admin.js** — 3 tab: [QR Code] [Dashboard] [Config]
+- [x] **Binary extraction** — tar.gz (Linux): binario + .so + symlinks soname; zip (Windows): exe + dll
+- [x] **LD_LIBRARY_PATH** — impostato automaticamente al lancio del sidecar su Linux
+- [x] **waitForHealth** — polling `/health` → `{"status":"ok"}`
+- [x] **Start/Stop llama-server** — bottoni dashboard, stato sincronizzato
+- [x] **llama releases** — dropdown versioni da GitHub (parsata dal body release, non dagli assets)
+- [x] **Memory filtering modelli** — dropdown mostra solo modelli compatibili con RAM/VRAM disponibile
+- [x] **Build tags dev/prod** — `static_dev.go` (disco) / `static_prod.go` (go:embed); `go build -tags dev`
+- [x] **Versioning ldflags** — `var Version = "dev"`, iniettato con `-ldflags "-X main.Version=x.y.z"`
+- [x] **UA redirect server-side** — `main.go` gestisce `/` con `Cache-Control: no-store` (fix Firefox cache)
+- [x] **Build & release system** — `scripts/build.sh <win|linux|all> <version>` → `dist/releases/`
+- [x] **Cross-compile** — Linux tar.gz + Windows zip da WSL, testati con `gemmalink.exe` su Windows host
+- [x] **Fix config.json Windows** — heredoc `<<'EOF'` per backslash corretti in JSON
 
 ---
 
-## ❌ Da Fare (priorità)
+## 🗓 Da Fare (prossima sessione)
 
-### 1. Scaricare llama-server binary (BLOCCANTE per test locale)
-Il binary non è presente. Dal tab Dashboard → pulsante "Download llama-server".  
-Oppure manualmente:
-```bash
-# URL da verificare in handlers.go HandleDownload, target=llama
-```
-Verificare che `handlers.go` → `HandleDownload` abbia l'URL corretto per la build Linux.
+### 1. Fix download llama-server (404)
+- `HandleDownload` costruisce l'URL con vecchio pattern — aggiornare per usare l'URL già noto dalla release
+- Verificare come `admin.js` passa la URL a `/api/download`
 
-### 2. Scaricare modello Gemma 4 E4B (BLOCCANTE per inferenza)
-File GGUF da ~4GB. Dal tab Dashboard → "Download E4B (4B)".  
-Verificare URL in `HandleDownload`, target=`model-e4b`.
+### 2. URL releases in config.json
+- Spostare `https://api.github.com/repos/ggerganov/llama.cpp/releases?per_page=15` in `config.json`
+- Così configurabile senza ricompilare
 
-### 3. Verificare URL download in HandleDownload
-Aprire `handlers.go`, cercare `HandleDownload`, verificare che gli URL per `llama` e `model-e4b` siano corretti e attivi (Hugging Face o release GitHub llama.cpp).
+### 3. Test E2E su Windows
+- Download llama-server Windows → estrazione exe + dll
+- Download modello E2B
+- Start llama-server → test `/ask` con foto
 
-### 4. Test end-to-end
-1. Avviare `./gemmalink`
-2. Aprire `http://localhost:8080` su PC → redirect a admin
-3. Tab QR → scansionare con smartphone
-4. Smartphone → accettare certificato self-signed → eye.html
-5. Foto → domanda → risposta streaming
-
-### 5. System prompt ottimizzato per Gemma 4
-In `handlers.go → HandleAsk`: il system prompt attuale è generico.  
-Ottimizzare per "assistente visivo" — descrive oggetti, simboli, etichette.
-
-### 6. Certificato SSL su smartphone
-Prima visita: il browser mobile mostrerà warning per cert self-signed.  
-Il tab QR già avvisa l'utente. Considerare se aggiungere istruzioni più dettagliate.
-
-### 7. Commit modifiche pendenti
-Le seguenti modifiche non sono ancora committate:
-- QR code feature (handlers.go, main.go, admin.html)
-- admin.css estratto
-- eye.html `/api/status` fix
-- `applyRemoteMode()` bug fix
-- WSL IP detection
-
-```bash
-cd /workspace/Go/eye-assistant
-git add -A
-git commit -m "feat: QR code tab, WSL-aware IP detection, admin.css"
-git push
-```
-
-### 8. (Opzionale) Ricarica cert TLS a caldo
-Attualmente il nuovo cert dopo "Regenerate" viene usato solo per nuove connessioni TLS.  
-Per un riavvio del listener TLS senza kill del processo servirebbe `crypto/tls.Config` con `GetCertificate`.
+### 4. README finale
+Documentare setup, avvio, download modelli, WSL2 note, screenshot.
 
 ---
 
@@ -213,3 +204,26 @@ go build . && ./gemmalink
 - Il QR code funziona e punta all'IP corretto (`192.168.0.65`)
 - Il port forwarding WSL→Windows funziona
 - Manca solo il motore (llama-server + modello GGUF) per avere l'app funzionante end-to-end
+
+## Creazione release
+- gemmalink.exe per windows 
+- gemmalink per linux / wsl 
+- I file statici devono essere embed negli eseguibili  
+- Creare lo zip per windows ed il tar per linux
+.
+├── config.json
+├── gemmalink || gemmalink.exe
+├── README.md
+├── .ssl
+│   └── .keep
+├── bin
+│   ├── linux
+│   │   └── .keep
+│   └── windows
+│       └── .keep
+├── models
+│   └── .keep
+├── scripts
+│   └── wsl-portforward.ps1
+└── uploads 
+    └── .keep

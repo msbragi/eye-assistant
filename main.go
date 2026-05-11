@@ -14,6 +14,10 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 )
 
+// Version is set at build time via -ldflags "-X main.Version=x.y.z".
+// Defaults to "dev" for local builds.
+var Version = "dev"
+
 func main() {
 	cfg, err := loadConfig(ConfigFile)
 	if err != nil {
@@ -49,13 +53,32 @@ func main() {
 	mux.HandleFunc("/api/qr", handlers.HandleQR)
 	mux.HandleFunc("/api/qr-url", handlers.HandleQRURL)
 	// Static files (index.html → UA redirect, eye.html, admin.html)
-	mux.Handle("/", http.FileServer(http.Dir("static")))
+	// Dev build (-tags dev): served from disk. Prod build: embedded.
+	static := staticHandler()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+			ua := strings.ToLower(r.Header.Get("User-Agent"))
+			isMobile := strings.Contains(ua, "android") ||
+				strings.Contains(ua, "iphone") ||
+				strings.Contains(ua, "ipad") ||
+				strings.Contains(ua, "mobile")
+			target := "/admin.html"
+			if isMobile {
+				target = "/eye.html"
+			}
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, r, target, http.StatusFound)
+			return
+		}
+		static.ServeHTTP(w, r)
+	})
 
 	// Detect mobile-accessible IP for QR code (WSL-aware)
 	lanIP := getMobileIP()
 	mobileURL := fmt.Sprintf("https://%s:%s", lanIP, cfg.HTTPSPort)
 
 	printQR(mobileURL)
+	log.Printf("GemmaLink  v%s", Version)
 	log.Printf("Dashboard : http://localhost:%s", cfg.HTTPPort)
 	log.Printf("Mobile URL: %s  (scan the QR code above)", mobileURL)
 
@@ -74,11 +97,21 @@ func main() {
 		log.Fatal(http.ListenAndServe(":"+cfg.HTTPPort, mux))
 	}()
 
+	// Ensure TLS certificate exists — generate on first run
+	if _, err := os.Stat(certPath); os.IsNotExist(err) {
+		log.Println("No TLS cert found — generating self-signed certificate...")
+		hosts, ips := DefaultCertSANs(cfg)
+		if err := GenerateSelfSignedCert(hosts, ips); err != nil {
+			log.Fatalf("Failed to generate TLS cert: %v", err)
+		}
+		log.Println("TLS cert generated in .ssl/")
+	}
+
 	// Start HTTPS (required for camera access on mobile browsers)
 	log.Fatal(http.ListenAndServeTLS(
 		":"+cfg.HTTPSPort,
-		".ssl/cert.pem",
-		".ssl/key.pem",
+		certPath,
+		keyPath,
 		mux,
 	))
 }

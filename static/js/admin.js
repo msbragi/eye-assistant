@@ -3,10 +3,12 @@
 
 // ─── Model URL defaults ────────────────────────────────────────
 const DEFAULT_MODEL_URLS = {
-  e2b:       'https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf',
-  e4b:       'https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf',
-  mmproj_e2b:'https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-BF16.gguf',
-  mmproj_e4b:'https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/mmproj-gemma-4-E4B-it-BF16.gguf',
+  e2b:        'https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf',
+  e4b:        'https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf',
+  //e31b:       'https://huggingface.co/lmstudio-community/gemma-4-E31B-it-GGUF/resolve/main/gemma-4-E31B-it-Q4_K_M.gguf',
+  mmproj_e2b: 'https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-BF16.gguf',
+  mmproj_e4b: 'https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/mmproj-gemma-4-E4B-it-BF16.gguf',
+  //mmproj_e31b:'https://huggingface.co/lmstudio-community/gemma-4-E31B-it-GGUF/resolve/main/mmproj-gemma-4-E31B-it-BF16.gguf',
 };
 
 // ─── Tab switching ─────────────────────────────────────────────
@@ -49,9 +51,11 @@ function applyRemoteMode(remote) {
 }
 
 // ─── Poll /api/sysinfo ─────────────────────────────────────────
+let lastSysInfo = null;
 async function pollSysinfo() {
   try {
     const d = await fetch('/api/sysinfo').then(r => r.json());
+    lastSysInfo = d;
     const ramPct = Math.round(d.ram_used / d.ram_total * 100);
     const diskPct = Math.round(d.disk_used / d.disk_total * 100);
     document.getElementById('ram-label').textContent = `${fmtGB(d.ram_used)} / ${fmtGB(d.ram_total)} (${ramPct}%)`;
@@ -229,12 +233,20 @@ document.getElementById('btn-use-llama').addEventListener('click', async () => {
 
 // ─── Model selector ────────────────────────────────────────────
 const MODEL_PATHS = {
-  e2b: { model: 'models/gemma-4-e2b.gguf',   mmproj: 'models/mmproj-gemma-4-e2b.gguf' },
-  e4b: { model: 'models/gemma-4-e4b.gguf',   mmproj: 'models/mmproj-gemma-4-e4b.gguf' },
+  e2b:  { model: 'models/gemma-4-e2b.gguf',   mmproj: 'models/mmproj-gemma-4-e2b.gguf' },
+  e4b:  { model: 'models/gemma-4-e4b.gguf',   mmproj: 'models/mmproj-gemma-4-e4b.gguf' },
+  e31b: { model: 'models/gemma-4-e31b.gguf',  mmproj: 'models/mmproj-gemma-4-e31b.gguf' },
 };
 const MODEL_LABELS = {
-  e2b: 'Gemma 4 E2B (2B params)',
-  e4b: 'Gemma 4 E4B (4B params)',
+  e2b:  'Gemma 4 E2B (2B params)',
+  e4b:  'Gemma 4 E4B (4B params)',
+  e31b: 'Gemma 4 E31B (31B params)',
+};
+// Minimum total RAM (bytes) required for each model variant (Q4_K_M + context overhead).
+const MODEL_MIN_RAM = {
+  e2b:  4  * 1073741824,  //  4 GB
+  e4b:  6  * 1073741824,  //  6 GB
+  e31b: 24 * 1073741824,  // 24 GB
 };
 
 let activeDownloadController = null;  // AbortController for model download cancellation
@@ -244,14 +256,26 @@ let lastModelsPresent = null;          // cached models_present from last status
 function updateModelSelectorUI(modelsPresent, activeModelPath, visionEnabled) {
   const sel = document.getElementById('model-selector');
 
-  // Add ✓ prefix to downloaded variants in the dropdown
-  for (const opt of sel.options) {
-    const v = opt.value;
-    const lbl = opt.dataset.label || MODEL_LABELS[v] || v;
-    opt.dataset.label = lbl;
+  // Determine effective memory: prefer GPU VRAM if available, otherwise total RAM.
+  const effectiveMem = (lastSysInfo && lastSysInfo.gpu_vram_total > 0)
+    ? Math.max(lastSysInfo.ram_total, lastSysInfo.gpu_vram_total)
+    : (lastSysInfo ? lastSysInfo.ram_total : Infinity);
+
+  // Show only variants whose memory requirement is met; keep current selection if still valid.
+  const currentVal = sel.value;
+  sel.innerHTML = '';
+  for (const [v, label] of Object.entries(MODEL_LABELS)) {
+    if (effectiveMem < MODEL_MIN_RAM[v]) continue;  // not enough memory — skip
+    const opt = document.createElement('option');
+    opt.value = v;
     const ok = !!(modelsPresent[v] || {}).model;
-    opt.textContent = (ok ? '✓ ' : '') + lbl;
+    opt.dataset.label = label;
+    opt.textContent = (ok ? '✓ ' : '') + label;
+    if (v === currentVal) opt.selected = true;
+    sel.appendChild(opt);
   }
+  // If previous selection was removed, fall back to first available.
+  if (!sel.value && sel.options.length > 0) sel.options[0].selected = true;
 
   const variant = sel.value;
   const p = modelsPresent[variant] || {};
@@ -456,6 +480,7 @@ async function loadConfig() {
     const urls = d.model_urls ?? {};
     document.getElementById('cfg-url-e2b').value = urls.e2b || DEFAULT_MODEL_URLS.e2b;
     document.getElementById('cfg-url-e4b').value = urls.e4b || DEFAULT_MODEL_URLS.e4b;
+    //document.getElementById('cfg-url-e31b').value = urls.e31b || DEFAULT_MODEL_URLS.e31b;
 
     setLlamaMode(rem.enabled ? 'remote' : 'local');
     log('Configuration loaded', 'ok');
@@ -484,8 +509,9 @@ document.getElementById('btn-save-cfg').addEventListener('click', async () => {
       endpoint: document.getElementById('cfg-remote-endpoint').value.trim(),
     },
     model_urls: {
-      e2b: document.getElementById('cfg-url-e2b').value.trim(),
-      e4b: document.getElementById('cfg-url-e4b').value.trim(),
+      e2b:  document.getElementById('cfg-url-e2b').value.trim(),
+      e4b:  document.getElementById('cfg-url-e4b').value.trim(),
+      //e31b: document.getElementById('cfg-url-e31b').value.trim(),
     },
   };
   const st = document.getElementById('cfg-status');
@@ -510,6 +536,9 @@ document.getElementById('btn-reset-e2b').addEventListener('click', () => {
 document.getElementById('btn-reset-e4b').addEventListener('click', () => {
   document.getElementById('cfg-url-e4b').value = DEFAULT_MODEL_URLS.e4b;
 });
+//document.getElementById('btn-reset-e31b').addEventListener('click', () => {
+//  document.getElementById('cfg-url-e31b').value = DEFAULT_MODEL_URLS.e31b;
+//});
 
 // ─── Test connection ───────────────────────────────────────────
 async function testEndpoint(endpoint, statusEl) {

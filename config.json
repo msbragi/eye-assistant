@@ -1,9 +1,9 @@
 {
   "http_host": "localhost",
-  "http_port": "8080",
-  "https_port": "8443",
+  "http_port": "8088",
+  "https_port": "8444",
   "llama_local": {
-    "enabled": false,
+    "enabled": true,
     "endpoint": "http://localhost:11434",
     "model_path": "models/gemma-4-e2b.gguf",
     "mmproj_path": "models/mmproj-gemma-4-e2b.gguf",
@@ -13,7 +13,7 @@
     "context_size": 4096
   },
   "llama_remote": {
-    "enabled": true,
+    "enabled": false,
     "endpoint": "http://172.26.240.1:8088"
   },
   "model_urls": {

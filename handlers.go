@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -204,6 +205,10 @@ func (h *Handlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
 			"model":  filePresent(DefaultModelPathE4B),
 			"mmproj": filePresent(DefaultMmprojPathE4B),
 		},
+		"e31b": map[string]bool{
+			"model":  filePresent(DefaultModelPathE31B),
+			"mmproj": filePresent(DefaultMmprojPathE31B),
+		},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -279,8 +284,11 @@ func (h *Handlers) HandleModelSelect(w http.ResponseWriter, r *http.Request) {
 	case "e4b":
 		modelPath = DefaultModelPathE4B
 		mmprojPath = DefaultMmprojPathE4B
+	case "e31b":
+		modelPath = DefaultModelPathE31B
+		mmprojPath = DefaultMmprojPathE31B
 	default:
-		http.Error(w, "unknown variant, use e2b or e4b", http.StatusBadRequest)
+		http.Error(w, "unknown variant, use e2b, e4b or e31b", http.StatusBadRequest)
 		return
 	}
 
@@ -321,6 +329,8 @@ func (h *Handlers) HandleVisionToggle(w http.ResponseWriter, r *http.Request) {
 			h.cfg.LlamaLocal.MmprojPath = DefaultMmprojPathE2B
 		case "e4b":
 			h.cfg.LlamaLocal.MmprojPath = DefaultMmprojPathE4B
+		case "e31b":
+			h.cfg.LlamaLocal.MmprojPath = DefaultMmprojPathE31B
 		}
 	}
 
@@ -346,7 +356,7 @@ func (h *Handlers) HandleLlamaReleases(w http.ResponseWriter, r *http.Request) {
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet,
-		"https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=15", nil)
+		"https://api.github.com/repos/ggerganov/llama.cpp/releases?per_page=15", nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -363,39 +373,44 @@ func (h *Handlers) HandleLlamaReleases(w http.ResponseWriter, r *http.Request) {
 
 	var releases []struct {
 		TagName string `json:"tag_name"`
-		Name    string `json:"name"`
-		Assets  []struct {
-			Name               string `json:"name"`
-			BrowserDownloadURL string `json:"browser_download_url"`
-		} `json:"assets"`
+		Body    string `json:"body"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		http.Error(w, "failed to parse GitHub response: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Filter assets by OS and pick the CPU variant (avx2 on Windows, plain ubuntu on Linux)
+	// CPU builds are linked in the release body text, not as GitHub assets.
+	// Windows: llama-bXXXX-bin-win-cpu-x64.zip
+	// Linux:   llama-bXXXX-bin-ubuntu-x64.tar.gz
 	type releaseEntry struct {
 		Tag  string `json:"tag"`
 		Name string `json:"name"`
 		URL  string `json:"url"`
 	}
+
+	urlPattern := `https://github\.com/ggml-org/llama\.cpp/releases/download/[^\s\)"]+`
+	re := regexp.MustCompile(urlPattern)
+
 	var result []releaseEntry
 	for _, rel := range releases {
-		for _, asset := range rel.Assets {
-			n := strings.ToLower(asset.Name)
+		urls := re.FindAllString(rel.Body, -1)
+		for _, u := range urls {
+			n := filepath.Base(u)
+			nl := strings.ToLower(n)
 			var match bool
 			if runtime.GOOS == "windows" {
-				match = strings.Contains(n, "win-avx2-x64") && strings.HasSuffix(n, ".zip")
+				match = strings.Contains(nl, "bin-win-cpu-x64") && strings.HasSuffix(nl, ".zip")
 			} else {
-				match = strings.Contains(n, "ubuntu-x64") && strings.HasSuffix(n, ".tar.gz") &&
-					!strings.Contains(n, "cuda") && !strings.Contains(n, "rocm")
+				match = strings.Contains(nl, "bin-ubuntu-x64") && strings.HasSuffix(nl, ".tar.gz") &&
+					!strings.Contains(nl, "cuda") && !strings.Contains(nl, "rocm") &&
+					!strings.Contains(nl, "vulkan") && !strings.Contains(nl, "sycl")
 			}
 			if match {
 				result = append(result, releaseEntry{
 					Tag:  rel.TagName,
-					Name: asset.Name,
-					URL:  asset.BrowserDownloadURL,
+					Name: n,
+					URL:  u,
 				})
 				break // one per release
 			}
@@ -460,6 +475,12 @@ func (h *Handlers) resolveDownload(target string) (downloadURL, destPath string,
 			u = DefaultModelURLe4b
 		}
 		return u, DefaultModelPathE4B, true
+	case "model-e31b":
+		u := h.cfg.ModelURLs.E31B
+		if u == "" {
+			u = DefaultModelURLe31b
+		}
+		return u, DefaultModelPathE31B, true
 	case "mmproj-e2b":
 		u := h.cfg.ModelURLs.MmprojE2B
 		if u == "" {
@@ -472,6 +493,12 @@ func (h *Handlers) resolveDownload(target string) (downloadURL, destPath string,
 			u = DefaultMmprojURLe4b
 		}
 		return u, DefaultMmprojPathE4B, true
+	case "mmproj-e31b":
+		u := h.cfg.ModelURLs.MmprojE31B
+		if u == "" {
+			u = DefaultMmprojURLe31b
+		}
+		return u, DefaultMmprojPathE31B, true
 	}
 	return "", "", false
 }
