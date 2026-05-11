@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -54,14 +57,21 @@ func (s *Sidecar) Start() error {
 		return fmt.Errorf("model not found at %s — run the downloader first", s.cfg.LlamaLocal.ModelPath)
 	}
 
-	s.cmd = exec.Command(s.cfg.LlamaLocal.LlamaBin,
+	args := []string{
 		"--model", s.cfg.LlamaLocal.ModelPath,
 		"--port", port,
 		"--ctx-size", strconv.Itoa(s.cfg.LlamaLocal.ContextSize),
 		"--host", "127.0.0.1",
-	)
+	}
+	if s.cfg.LlamaLocal.MmprojPath != "" && s.cfg.LlamaLocal.VisionEnabled {
+		args = append(args, "--mmproj", s.cfg.LlamaLocal.MmprojPath)
+	}
+	s.cmd = exec.Command(s.cfg.LlamaLocal.LlamaBin, args...)
 	s.cmd.Stdout = os.Stdout
 	s.cmd.Stderr = os.Stderr
+	// Ensure shared libs in the same directory as the binary are found.
+	binDir, _ := filepath.Abs(filepath.Dir(s.cfg.LlamaLocal.LlamaBin))
+	s.cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+binDir)
 
 	if err := s.cmd.Start(); err != nil {
 		return fmt.Errorf("starting llama-server: %w", err)
@@ -70,8 +80,8 @@ func (s *Sidecar) Start() error {
 	s.port = port // set only after successful start
 	log.Printf("llama-server started (pid=%d) on port %s", s.cmd.Process.Pid, s.port)
 
-	// Wait until the server is ready (max 60s)
-	if err := waitForPort("127.0.0.1:"+s.port, 60*time.Second); err != nil {
+	// Wait until the model is fully loaded (max 120s), polling /health
+	if err := waitForHealth("http://127.0.0.1:"+s.port+"/health", 120*time.Second); err != nil {
 		return fmt.Errorf("llama-server did not become ready: %w", err)
 	}
 	log.Println("llama-server is ready")
@@ -87,6 +97,7 @@ func (s *Sidecar) Stop() {
 		_ = s.cmd.Process.Kill()
 		_ = s.cmd.Wait()
 		s.cmd = nil
+		s.port = "" // clear so Port() returns empty and status shows not running
 		log.Println("llama-server stopped")
 	}
 }
@@ -127,4 +138,25 @@ func waitForPort(addr string, timeout time.Duration) error {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return fmt.Errorf("timeout waiting for %s", addr)
+}
+
+// waitForHealth polls GET url until llama-server reports {"status":"ok"}.
+func waitForHealth(url string, timeout time.Duration) error {
+	client := &http.Client{Timeout: 2 * time.Second}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(url)
+		if err == nil {
+			var body struct {
+				Status string `json:"status"`
+			}
+			json.NewDecoder(resp.Body).Decode(&body)
+			resp.Body.Close()
+			if body.Status == "ok" {
+				return nil
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return fmt.Errorf("timeout waiting for llama-server to be ready")
 }

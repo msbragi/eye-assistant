@@ -1,6 +1,9 @@
 package main
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -187,16 +190,36 @@ func (h *Handlers) HandleStatus(w http.ResponseWriter, r *http.Request) {
 		modelPath = h.cfg.LlamaLocal.ModelPath
 	}
 
+	// Per-model file presence (always checked, used by model selector UI)
+	filePresent := func(path string) bool {
+		_, err := os.Stat(path)
+		return err == nil
+	}
+	modelsPresent := map[string]any{
+		"e2b": map[string]bool{
+			"model":  filePresent(DefaultModelPathE2B),
+			"mmproj": filePresent(DefaultMmprojPathE2B),
+		},
+		"e4b": map[string]bool{
+			"model":  filePresent(DefaultModelPathE4B),
+			"mmproj": filePresent(DefaultMmprojPathE4B),
+		},
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"remote_mode":   remote,
-		"ready":         ready,
-		"llama_addr":    llamaAddr,
-		"model_path":    modelPath,
-		"model_present": modelPresent,
-		"model_size":    modelSize,
-		"bin_path":      h.cfg.LlamaLocal.LlamaBin,
-		"bin_present":   binPresent,
+		"remote_mode":    remote,
+		"ready":          ready,
+		"llama_addr":     llamaAddr,
+		"model_path":     modelPath,
+		"model_present":  modelPresent,
+		"model_size":     modelSize,
+		"bin_path":       h.cfg.LlamaLocal.LlamaBin,
+		"bin_present":    binPresent,
+		"bin_version":    h.cfg.LlamaLocal.LlamaBinVersion,
+		"models_present": modelsPresent,
+		"active_variant": h.cfg.LlamaLocal.MmprojPath,
+		"vision_enabled": h.cfg.LlamaLocal.VisionEnabled,
 	})
 }
 
@@ -223,41 +246,256 @@ func (h *Handlers) HandleLlamaStop(w http.ResponseWriter, r *http.Request) {
 }
 
 // -----------------------------------------------------------------
+// POST /api/llama/start — start the llama-server sidecar
+// -----------------------------------------------------------------
+func (h *Handlers) HandleLlamaStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := h.sidecar.Start(); err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
+}
+
+// -----------------------------------------------------------------
+// POST /api/model/select?variant=e2b|e4b
+// Sets model_path + mmproj_path in config and saves.
+// -----------------------------------------------------------------
+func (h *Handlers) HandleModelSelect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	variant := r.URL.Query().Get("variant")
+	var modelPath, mmprojPath string
+	switch variant {
+	case "e2b":
+		modelPath = DefaultModelPathE2B
+		mmprojPath = DefaultMmprojPathE2B
+	case "e4b":
+		modelPath = DefaultModelPathE4B
+		mmprojPath = DefaultMmprojPathE4B
+	default:
+		http.Error(w, "unknown variant, use e2b or e4b", http.StatusBadRequest)
+		return
+	}
+
+	h.cfg.LlamaLocal.ModelPath = modelPath
+	h.cfg.LlamaLocal.MmprojPath = mmprojPath
+	// Reset LLM client so next /ask uses new paths
+	h.llm = nil
+
+	if err := h.cfg.Save(ConfigFile); err != nil {
+		http.Error(w, "failed to save config: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"ok":          true,
+		"model_path":  modelPath,
+		"mmproj_path": mmprojPath,
+	})
+}
+
+// -----------------------------------------------------------------
+// POST /api/vision/toggle?enabled=true&variant=e2b|e4b
+// Enables or disables mmproj vision for local llama-server.
+// -----------------------------------------------------------------
+func (h *Handlers) HandleVisionToggle(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	enabled := r.URL.Query().Get("enabled") == "true"
+	variant := r.URL.Query().Get("variant")
+
+	h.cfg.LlamaLocal.VisionEnabled = enabled
+	if enabled && variant != "" {
+		switch variant {
+		case "e2b":
+			h.cfg.LlamaLocal.MmprojPath = DefaultMmprojPathE2B
+		case "e4b":
+			h.cfg.LlamaLocal.MmprojPath = DefaultMmprojPathE4B
+		}
+	}
+
+	if err := h.cfg.Save(ConfigFile); err != nil {
+		http.Error(w, "failed to save config: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"ok":             true,
+		"vision_enabled": h.cfg.LlamaLocal.VisionEnabled,
+	})
+}
+
+// -----------------------------------------------------------------
+// GET /api/llama/releases — lists compatible llama.cpp GitHub releases
+// Returns [{tag, name, url}] filtered by current OS (CPU variant).
+// -----------------------------------------------------------------
+func (h *Handlers) HandleLlamaReleases(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet,
+		"https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=15", nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "GitHub API unreachable: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	var releases []struct {
+		TagName string `json:"tag_name"`
+		Name    string `json:"name"`
+		Assets  []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		http.Error(w, "failed to parse GitHub response: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Filter assets by OS and pick the CPU variant (avx2 on Windows, plain ubuntu on Linux)
+	type releaseEntry struct {
+		Tag  string `json:"tag"`
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	}
+	var result []releaseEntry
+	for _, rel := range releases {
+		for _, asset := range rel.Assets {
+			n := strings.ToLower(asset.Name)
+			var match bool
+			if runtime.GOOS == "windows" {
+				match = strings.Contains(n, "win-avx2-x64") && strings.HasSuffix(n, ".zip")
+			} else {
+				match = strings.Contains(n, "ubuntu-x64") && strings.HasSuffix(n, ".tar.gz") &&
+					!strings.Contains(n, "cuda") && !strings.Contains(n, "rocm")
+			}
+			if match {
+				result = append(result, releaseEntry{
+					Tag:  rel.TagName,
+					Name: asset.Name,
+					URL:  asset.BrowserDownloadURL,
+				})
+				break // one per release
+			}
+		}
+		if len(result) >= 10 {
+			break
+		}
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
+// -----------------------------------------------------------------
+// POST /api/llama/select?tag=b9095
+// Saves the active llama-server version tag to config.
+// -----------------------------------------------------------------
+func (h *Handlers) HandleLlamaSelect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	tag := r.URL.Query().Get("tag")
+	if tag == "" {
+		http.Error(w, "tag required", http.StatusBadRequest)
+		return
+	}
+
+	h.cfg.LlamaLocal.LlamaBinVersion = tag
+	if err := h.cfg.Save(ConfigFile); err != nil {
+		http.Error(w, "failed to save config: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"ok":  true,
+		"tag": tag,
+	})
+}
+
+// -----------------------------------------------------------------
 // GET /api/download?target=llama|model-e2b|model-e4b
 // Streams download progress as SSE: {"pct":42,"bytes":N,"total":N}
 // -----------------------------------------------------------------
 
 // downloadTargets maps target names to download URLs and destination paths.
-var downloadTargets = map[string][2]string{
-	"llama": {
-		llamaBinaryURL(),
-		"bin/linux/llama-server",
-	},
-	"model-e2b": {
-		"https://huggingface.co/bartowski/google_gemma-3-2b-it-GGUF/resolve/main/google_gemma-3-2b-it-Q4_K_M.gguf",
-		"models/gemma-4-e2b.gguf",
-	},
-	"model-e4b": {
-		"https://huggingface.co/bartowski/google_gemma-3-4b-it-GGUF/resolve/main/google_gemma-3-4b-it-Q4_K_M.gguf",
-		"models/gemma-4-e4b.gguf",
-	},
+// Llama binary URL is built from the version tag stored in config.
+func (h *Handlers) resolveDownload(target string) (downloadURL, destPath string, ok bool) {
+	switch target {
+	case "llama":
+		u := llamaBinaryURLForTag(h.cfg.LlamaLocal.LlamaBinVersion)
+		return u, h.cfg.LlamaLocal.LlamaBin, true
+	case "model-e2b":
+		u := h.cfg.ModelURLs.E2B
+		if u == "" {
+			u = DefaultModelURLe2b
+		}
+		return u, DefaultModelPathE2B, true
+	case "model-e4b":
+		u := h.cfg.ModelURLs.E4B
+		if u == "" {
+			u = DefaultModelURLe4b
+		}
+		return u, DefaultModelPathE4B, true
+	case "mmproj-e2b":
+		u := h.cfg.ModelURLs.MmprojE2B
+		if u == "" {
+			u = DefaultMmprojURLe2b
+		}
+		return u, DefaultMmprojPathE2B, true
+	case "mmproj-e4b":
+		u := h.cfg.ModelURLs.MmprojE4B
+		if u == "" {
+			u = DefaultMmprojURLe4b
+		}
+		return u, DefaultMmprojPathE4B, true
+	}
+	return "", "", false
 }
 
-func llamaBinaryURL() string {
-	if runtime.GOOS == "windows" {
-		return "https://github.com/ggml-org/llama.cpp/releases/latest/download/llama-b5765-bin-win-avx2-x64.zip"
+// llamaBinaryURLForTag builds the GitHub download URL for a given release tag.
+// If tag is empty, uses the /latest redirect (tag-agnostic filename not possible,
+// so we fall back to a known-good recent build).
+func llamaBinaryURLForTag(tag string) string {
+	if tag == "" {
+		tag = "b9095" // fallback until user selects a version
 	}
-	return "https://github.com/ggml-org/llama.cpp/releases/latest/download/llama-b5765-bin-ubuntu-x64.zip"
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf("https://github.com/ggml-org/llama.cpp/releases/download/%s/llama-%s-bin-win-avx2-x64.zip", tag, tag)
+	}
+	return fmt.Sprintf("https://github.com/ggml-org/llama.cpp/releases/download/%s/llama-%s-bin-ubuntu-x64.tar.gz", tag, tag)
 }
 
 func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	target := r.URL.Query().Get("target")
-	entry, ok := downloadTargets[target]
+	url, destPath, ok := h.resolveDownload(target)
 	if !ok {
 		http.Error(w, "unknown target", http.StatusBadRequest)
 		return
 	}
-	url, destPath := entry[0], entry[1]
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -281,7 +519,12 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := http.Get(url) //nolint:noctx
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		sendEvt(map[string]string{"error": err.Error()})
+		return
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		sendEvt(map[string]string{"error": err.Error()})
 		return
@@ -305,7 +548,16 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	buf := make([]byte, 32*1024)
 	lastReport := time.Now()
 
+	ctx := r.Context()
 	for {
+		// Check if client cancelled
+		select {
+		case <-ctx.Done():
+			f.Close()
+			os.Remove(tmp)
+			return
+		default:
+		}
 		n, readErr := resp.Body.Read(buf)
 		if n > 0 {
 			if _, werr := f.Write(buf[:n]); werr != nil {
@@ -330,7 +582,10 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 		if readErr != nil {
 			f.Close()
 			os.Remove(tmp)
-			sendEvt(map[string]string{"error": readErr.Error()})
+			// Don't report error if cancelled by client
+			if ctx.Err() == nil {
+				sendEvt(map[string]string{"error": readErr.Error()})
+			}
 			return
 		}
 	}
@@ -341,12 +596,163 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// For llama binary: extract the actual executable from the archive
+	if target == "llama" {
+		if err := extractLlamaBinary(destPath); err != nil {
+			os.Remove(destPath)
+			sendEvt(map[string]string{"error": "extract failed: " + err.Error()})
+			return
+		}
+	}
+
 	// Make binary executable on Linux/Mac
-	if strings.HasSuffix(destPath, "llama-server") {
+	if strings.HasSuffix(destPath, "llama-server") || strings.HasSuffix(destPath, "llama-server.exe") {
 		os.Chmod(destPath, 0755) //nolint:errcheck
 	}
 
 	sendEvt(map[string]any{"pct": 100, "bytes": downloaded, "total": downloaded, "done": true})
+}
+
+// extractLlamaBinary extracts llama-server (or llama-server.exe) and all
+// required shared libraries from the downloaded archive (tar.gz on Linux,
+// zip on Windows) at archivePath, replacing the archive file with the binary.
+func extractLlamaBinary(archivePath string) error {
+	binName := "llama-server"
+	if runtime.GOOS == "windows" {
+		binName = "llama-server.exe"
+	}
+
+	destDir := filepath.Dir(archivePath)
+
+	if runtime.GOOS == "windows" {
+		return extractFromZipAll(archivePath, binName, destDir)
+	}
+	return extractFromTarGzAll(archivePath, binName, destDir)
+}
+
+// extractFromTarGzAll extracts binName + all .so/.so.* files into destDir,
+// then removes the archive.
+func extractFromTarGzAll(archivePath, binName, destDir string) error {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+
+	binTmp := archivePath + ".bin.tmp"
+	tr := tar.NewReader(gz)
+	foundBin := false
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		base := filepath.Base(hdr.Name)
+
+		switch hdr.Typeflag {
+		case tar.TypeReg:
+			isBin := base == binName
+			isSo := strings.HasSuffix(base, ".so") || strings.Contains(base, ".so.")
+			if !isBin && !isSo {
+				continue
+			}
+			// Write binary to a temp file — never truncate the file we're reading.
+			destFile := filepath.Join(destDir, base)
+			if isBin {
+				destFile = binTmp
+				foundBin = true
+			}
+			out, err := os.Create(destFile)
+			if err != nil {
+				return err
+			}
+			_, err = io.Copy(out, tr)
+			out.Close()
+			if err != nil {
+				return err
+			}
+			if isBin {
+				os.Chmod(destFile, 0755) //nolint:errcheck
+			}
+
+		case tar.TypeSymlink:
+			// Restore symlinks (e.g. libllama-common.so.0 → libllama-common.so.0.0.9102)
+			linkName := base
+			linkTarget := filepath.Base(hdr.Linkname)
+			isSoLink := strings.Contains(linkName, ".so")
+			if !isSoLink {
+				continue
+			}
+			symlinkPath := filepath.Join(destDir, linkName)
+			os.Remove(symlinkPath)
+			os.Symlink(linkTarget, symlinkPath) //nolint:errcheck
+		}
+	}
+
+	if !foundBin {
+		os.Remove(binTmp)
+		return fmt.Errorf("%s not found in archive", binName)
+	}
+
+	// Replace the archive file with the extracted binary.
+	f.Close()
+	os.Remove(archivePath)
+	return os.Rename(binTmp, archivePath)
+}
+
+// extractFromZipAll extracts binName + all .dll files into destDir,
+// then removes the archive.
+func extractFromZipAll(archivePath, binName, destDir string) error {
+	r, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	foundBin := false
+	for _, f := range r.File {
+		base := filepath.Base(f.Name)
+		isBin := base == binName
+		isDll := strings.HasSuffix(strings.ToLower(base), ".dll")
+		if !isBin && !isDll {
+			continue
+		}
+		destFile := filepath.Join(destDir, base)
+		if isBin {
+			destFile = archivePath
+			foundBin = true
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		out, err := os.Create(destFile)
+		if err != nil {
+			rc.Close()
+			return err
+		}
+		_, err = io.Copy(out, rc)
+		out.Close()
+		rc.Close()
+		if err != nil {
+			return err
+		}
+	}
+	if !foundBin {
+		return fmt.Errorf("%s not found in archive", binName)
+	}
+	return nil
 }
 
 // -----------------------------------------------------------------
@@ -457,6 +863,7 @@ func (h *Handlers) HandleConfig(w http.ResponseWriter, r *http.Request) {
 		h.cfg.UploadDir = incoming.UploadDir
 		h.cfg.LlamaLocal = incoming.LlamaLocal
 		h.cfg.LlamaRemote = incoming.LlamaRemote
+		h.cfg.ModelURLs = incoming.ModelURLs
 
 		// Reset LLM client so next /ask rebuilds with new endpoint
 		h.llm = nil
@@ -514,9 +921,11 @@ func (h *Handlers) HandleCertRegenerate(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(map[string]any{
 		"ok":        true,
 		"hostnames": hostnames,
-		"ips":       func() []string {
+		"ips": func() []string {
 			s := make([]string, len(ips))
-			for i, ip := range ips { s[i] = ip.String() }
+			for i, ip := range ips {
+				s[i] = ip.String()
+			}
 			return s
 		}(),
 	})

@@ -1,539 +1,314 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GemmaLink — Admin</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link href="css/admin.css" rel="stylesheet">
 </head>
+
 <body>
 
-<header>
-  <h1>Gemma<span>Link</span> <span style="color:#444;font-weight:400;font-size:0.9rem">/ admin</span></h1>
-  <div class="tab-bar">
-    <button class="tab-btn active" data-tab="qr">QR Code</button>
-    <button class="tab-btn" data-tab="dashboard">Dashboard</button>
-    <button class="tab-btn" data-tab="config">Config</button>
-  </div>
-  <div class="header-links">
-    <a href="/eye.html">📷 Open Eye</a>
-  </div>
-</header>
+  <header>
+    <h1>Gemma<span>Link</span> <span style="color:#444;font-weight:400;font-size:0.9rem">/ admin</span></h1>
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="qr">QR Code</button>
+      <button class="tab-btn" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="config">Config</button>
+    </div>
+    <div class="header-links">
+      <a href="/eye.html">📷 Open Eye</a>
+    </div>
+  </header>
 
-<!-- ═══════════ QR CODE TAB ═══════════ -->
-<div id="tab-qr" class="tab-panel active">
-<div class="container" style="max-width:520px">
+  <!-- ═══════════ QR CODE TAB ═══════════ -->
+  <div id="tab-qr" class="tab-panel active">
+    <div class="container" style="max-width:520px">
 
-  <div class="card full-width" style="text-align:center">
-    <h2>Mobile Access</h2>
-    <p style="color:#aaa;margin:0 0 20px;font-size:0.9rem">
-      Scan with your smartphone camera to open the Eye assistant
-    </p>
-    <img id="qr-img" src="/api/qr" alt="QR code"
-         style="width:220px;height:220px;border-radius:12px;background:#fff;padding:12px;display:block;margin:0 auto 16px" />
-    <div id="qr-url"
-         style="font-size:0.8rem;color:#888;font-family:monospace;word-break:break-all;margin-bottom:16px">
-      …
-    </div>
-    <p style="font-size:0.75rem;color:#555;line-height:1.6;margin:0">
-      ⚠ On first visit, accept the self-signed certificate warning in your browser.
-    </p>
-  </div>
-
-</div>
-</div><!-- /tab-qr -->
-
-<!-- ═══════════ DASHBOARD TAB ═══════════ -->
-<div id="tab-dashboard" class="tab-panel">
-<div class="container">
-
-  <!-- System Resources -->
-  <div class="card">
-    <h2>System Resources</h2>
-    <div class="resource-row">
-      <div class="resource-label"><span>RAM</span><span id="ram-label">—</span></div>
-      <div class="bar-track"><div class="bar-fill" id="ram-bar" style="width:0%"></div></div>
-    </div>
-    <div class="resource-row">
-      <div class="resource-label"><span>CPU</span><span id="cpu-label">—</span></div>
-      <div class="bar-track"><div class="bar-fill" id="cpu-bar" style="width:0%"></div></div>
-    </div>
-    <div class="resource-row">
-      <div class="resource-label"><span>Disk</span><span id="disk-label">—</span></div>
-      <div class="bar-track"><div class="bar-fill" id="disk-bar" style="width:0%"></div></div>
-    </div>
-    <div class="gpu-row" id="gpu-info">GPU: detecting…</div>
-  </div>
-
-  <!-- Server Status -->
-  <div class="card">
-    <h2>Server Status</h2>
-    <div class="status-item">
-      <div class="dot unknown" id="dot-server"></div>
-      <span class="status-label">Go HTTP server</span>
-      <span class="status-value" id="val-server">—</span>
-    </div>
-    <div class="status-item">
-      <div class="dot unknown" id="dot-llama"></div>
-      <span class="status-label">llama-server</span>
-      <span class="status-value" id="val-llama">—</span>
-    </div>
-    <div class="status-item">
-      <div class="dot unknown" id="dot-model"></div>
-      <span class="status-label">Gemma model</span>
-      <span class="status-value" id="val-model">—</span>
-    </div>
-    <!-- local mode only -->
-    <div class="actions-row" id="row-stop">
-      <button class="btn btn-danger" id="btn-stop-llama" disabled>Stop llama-server</button>
-    </div>
-    <!-- remote mode notice -->
-    <div id="remote-notice" class="remote-notice" style="display:none">
-      llama-server is managed on the remote host.<br>
-      Start it manually with the Gemma model loaded, then verify
-      with <strong>Test Connection</strong> in the Config tab.
-    </div>
-  </div>
-
-  <!-- llama-server Binary — local mode only -->
-  <div class="card" id="card-binary">
-    <h2>llama-server Binary</h2>
-    <div class="status-item">
-      <div class="dot unknown" id="dot-bin"></div>
-      <span class="status-label" id="label-bin">Checking…</span>
-      <span class="status-value" id="val-bin">—</span>
-    </div>
-    <div class="actions-row">
-      <button class="btn btn-primary" id="btn-dl-llama">Download llama-server</button>
-    </div>
-    <div class="progress-wrap" id="prog-llama-wrap">
-      <div class="progress-track"><div class="progress-fill" id="prog-llama-fill"></div></div>
-      <div class="progress-label" id="prog-llama-label">0%</div>
-    </div>
-  </div>
-
-  <!-- Gemma Model — local mode only -->
-  <div class="card" id="card-model">
-    <h2>Gemma 4 Model</h2>
-    <div class="status-item">
-      <div class="dot unknown" id="dot-gguf"></div>
-      <span class="status-label" id="label-gguf">Checking…</span>
-      <span class="status-value" id="val-gguf">—</span>
-    </div>
-    <div class="actions-row">
-      <button class="btn btn-primary" id="btn-dl-e2b">Download E2B (2B)</button>
-      <button class="btn btn-secondary" id="btn-dl-e4b">Download E4B (4B)</button>
-    </div>
-    <div class="progress-wrap" id="prog-model-wrap">
-      <div class="progress-track"><div class="progress-fill" id="prog-model-fill"></div></div>
-      <div class="progress-label" id="prog-model-label">0%</div>
-    </div>
-  </div>
-
-  <!-- Activity Log -->
-  <div class="card full-width">
-    <h2>Activity Log</h2>
-    <div id="log-box"></div>
-  </div>
-
-</div>
-</div><!-- /tab-dashboard -->
-
-<!-- ═══════════ CONFIG TAB ═══════════ -->
-<div id="tab-config" class="tab-panel">
-<div class="container-form">
-
-  <!-- GemmaLink Server -->
-  <div class="form-section">
-    <h3>GemmaLink Server</h3>
-    <div class="form-row">
-      <div class="form-label">HTTP Host<small>bind / QR address</small></div>
-      <input class="form-input" id="cfg-http-host" type="text" placeholder="localhost" />
-    </div>
-    <div class="form-row">
-      <div class="form-label">HTTP Port</div>
-      <input class="form-input" id="cfg-http-port" type="text" maxlength="5" placeholder="8080" />
-    </div>
-    <div class="form-row">
-      <div class="form-label">HTTPS Port<small>required for camera</small></div>
-      <div>
-        <input class="form-input" id="cfg-https-port" type="text" maxlength="5" placeholder="8443" />
-        <div id="cfg-restart-warn" style="display:none;margin-top:5px" class="warn-text">⚠ Port changes require a server restart</div>
+      <div class="card full-width" style="text-align:center">
+        <h2>Mobile Access</h2>
+        <p style="color:#aaa;margin:0 0 20px;font-size:0.9rem">
+          Scan with your smartphone camera to open the Eye assistant
+        </p>
+        <img id="qr-img" src="/api/qr" alt="QR code"
+          style="width:220px;height:220px;border-radius:12px;background:#fff;padding:12px;display:block;margin:0 auto 16px" />
+        <div id="qr-url"
+          style="font-size:0.8rem;color:#888;font-family:monospace;word-break:break-all;margin-bottom:16px">
+          …
+        </div>
+        <p style="font-size:0.75rem;color:#555;line-height:1.6;margin:0">
+          ⚠ On first visit, accept the self-signed certificate warning in your browser.
+        </p>
       </div>
-    </div>
-    <div class="form-row">
-      <div class="form-label">Upload Dir<small>temp image storage</small></div>
-      <input class="form-input" id="cfg-upload-dir" type="text" placeholder="uploads" />
-    </div>
-  </div>
 
-  <!-- Inference Server -->
-  <div class="form-section">
-    <h3>Inference Server (llama.cpp)</h3>
+    </div>
+  </div><!-- /tab-qr -->
 
-    <!-- Mode selector -->
-    <div class="form-row">
-      <div class="form-label">Mode</div>
-      <div class="radio-group">
-        <label class="radio-label" id="lbl-local">
-          <input type="radio" name="llama-mode" value="local" id="radio-local" />
-          Local — managed by this server
-        </label>
-        <label class="radio-label" id="lbl-remote">
-          <input type="radio" name="llama-mode" value="remote" id="radio-remote" />
-          Remote — another machine on the network
-        </label>
+  <!-- ═══════════ DASHBOARD TAB ═══════════ -->
+  <div id="tab-dashboard" class="tab-panel">
+    <div class="container">
+
+      <!-- System Resources -->
+      <div class="card">
+        <h2>System Resources</h2>
+        <div class="resource-row">
+          <div class="resource-label"><span>RAM</span><span id="ram-label">—</span></div>
+          <div class="bar-track">
+            <div class="bar-fill" id="ram-bar" style="width:0%"></div>
+          </div>
+        </div>
+        <div class="resource-row">
+          <div class="resource-label"><span>CPU</span><span id="cpu-label">—</span></div>
+          <div class="bar-track">
+            <div class="bar-fill" id="cpu-bar" style="width:0%"></div>
+          </div>
+        </div>
+        <div class="resource-row">
+          <div class="resource-label"><span>Disk</span><span id="disk-label">—</span></div>
+          <div class="bar-track">
+            <div class="bar-fill" id="disk-bar" style="width:0%"></div>
+          </div>
+        </div>
+        <div class="gpu-row" id="gpu-info">GPU: detecting…</div>
       </div>
-    </div>
 
-    <!-- Local panel -->
-    <div id="panel-local" class="mode-panel">
-      <div class="form-row">
-        <div class="form-label">Endpoint<small>local URL</small></div>
-        <div class="inline-row">
-          <input class="form-input" id="cfg-local-endpoint" type="text" placeholder="http://localhost:11434" />
-          <button class="btn btn-secondary btn-sm" id="btn-test-local">Test</button>
-          <span id="conn-status-local"></span>
+      <!-- Server Status -->
+      <div class="card">
+        <h2>Server Status</h2>
+        <div class="status-item">
+          <div class="dot unknown" id="dot-server"></div>
+          <span class="status-label">Go HTTP server</span>
+          <span class="status-value" id="val-server">—</span>
+        </div>
+        <div class="status-item">
+          <div class="dot unknown" id="dot-llama"></div>
+          <span class="status-label">llama-server</span>
+          <span class="status-value" id="val-llama">—</span>
+        </div>
+        <div class="status-item">
+          <div class="dot unknown" id="dot-model"></div>
+          <span class="status-label">Gemma model</span>
+          <span class="status-value" id="val-model">—</span>
+        </div>
+        <!-- local mode only -->
+        <div class="actions-row" id="row-stop">
+          <button class="btn btn-primary" id="btn-start-llama" style="display:none">▶ Start llama-server</button>
+          <button class="btn btn-danger" id="btn-stop-llama" style="display:none">■ Stop llama-server</button>
+        </div>
+        <!-- remote mode notice -->
+        <div id="remote-notice" class="remote-notice" style="display:none">
+          llama-server is managed on the remote host.<br>
+          Start it manually with the Gemma model loaded, then verify
+          with <strong>Test Connection</strong> in the Config tab.
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-label">llama Binary<small>path on this machine</small></div>
-        <input class="form-input" id="cfg-llama-bin" type="text" placeholder="bin/linux/llama-server" />
-      </div>
-      <div class="form-row">
-        <div class="form-label">Model Path<small>.gguf file</small></div>
-        <input class="form-input" id="cfg-model-path" type="text" placeholder="models/gemma-4-e4b.gguf" />
-      </div>
-      <div class="form-row">
-        <div class="form-label">Context Size<small>tokens</small></div>
-        <input class="form-input" id="cfg-context-size" type="text" maxlength="6" placeholder="4096" />
-      </div>
-    </div>
 
-    <!-- Remote panel -->
-    <div id="panel-remote" class="mode-panel" style="display:none">
-      <div class="form-row">
-        <div class="form-label">Endpoint<small>remote URL</small></div>
-        <div class="inline-row">
-          <input class="form-input" id="cfg-remote-endpoint" type="text" placeholder="http://192.168.1.32:11434" />
-          <button class="btn btn-secondary btn-sm" id="btn-test-remote">Test</button>
-          <span id="conn-status-remote"></span>
+      <!-- llama-server Binary — local mode only -->
+      <div class="card" id="card-binary">
+        <h2>llama-server Binary</h2>
+        <div style="margin-bottom:10px">
+          <select id="llama-selector" class="form-input">
+            <option value="">Loading releases…</option>
+          </select>
+        </div>
+        <div class="status-item">
+          <div class="dot unknown" id="dot-bin"></div>
+          <span class="status-label" id="label-bin">Binary file</span>
+          <span class="status-value" id="val-bin">—</span>
+        </div>
+        <div class="actions-row" id="llama-actions" style="flex-wrap:wrap;gap:8px">
+          <button class="btn btn-primary" id="btn-dl-llama" style="display:none">⬇ Download</button>
+          <button class="btn btn-secondary" id="btn-cancel-dl-llama" style="display:none">✕ Cancel</button>
+          <button class="btn btn-primary" id="btn-use-llama" style="display:none">✓ Use this version</button>
+        </div>
+        <div id="llama-active-badge" style="display:none;font-size:0.8rem;color:#44ff88;margin-top:6px"></div>
+        <div class="progress-wrap" id="prog-llama-wrap">
+          <div class="progress-track">
+            <div class="progress-fill" id="prog-llama-fill"></div>
+          </div>
+          <div class="progress-label" id="prog-llama-label">0%</div>
         </div>
       </div>
-      <div class="remote-notice">
-        Start llama-server on the remote machine with the Gemma model loaded,
-        then click <strong>Test</strong> to verify the connection.
+
+      <!-- Gemma Model — local mode only -->
+      <div class="card" id="card-model">
+        <h2>Gemma 4 Model</h2>
+        <div style="margin-bottom:10px">
+          <select id="model-selector" class="form-input">
+            <option value="e2b">Gemma 4 E2B (2B params)</option>
+            <option value="e4b">Gemma 4 E4B (4B params)</option>
+          </select>
+        </div>
+        <div class="vision-toggle-row">
+          <span class="vision-toggle-label">👁 Vision (mmproj)</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="vision-toggle" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="actions-row" id="model-actions" style="flex-wrap:wrap;gap:8px">
+          <button class="btn btn-primary" id="btn-dl-model" style="display:none">⬇ Download model</button>
+          <button class="btn btn-secondary" id="btn-cancel-dl" style="display:none">✕ Cancel</button>
+          <button class="btn btn-primary" id="btn-use-model" style="display:none">✓ Use this model</button>
+        </div>
+        <div id="model-active-badge" style="display:none;font-size:0.8rem;color:#44ff88;margin-top:6px"></div>
+        <div class="progress-wrap" id="prog-model-wrap">
+          <div class="progress-track">
+            <div class="progress-fill" id="prog-model-fill"></div>
+          </div>
+          <div class="progress-label" id="prog-model-label">0%</div>
+        </div>
       </div>
+
+      <!-- Activity Log -->
+      <div class="card full-width">
+        <h2>Activity Log</h2>
+        <div id="log-box"></div>
+      </div>
+
     </div>
-  </div>
+  </div><!-- /tab-dashboard -->
 
-  <!-- Save -->
-  <div style="display:flex;align-items:center;gap:12px">
-    <button class="btn btn-primary" id="btn-save-cfg">Save Configuration</button>
-    <span id="cfg-status" style="font-size:0.82rem;color:#666"></span>
-  </div>
+  <!-- ═══════════ CONFIG TAB ═══════════ -->
+  <div id="tab-config" class="tab-panel">
+    <div class="container-form">
 
-  <!-- SSL Certificate -->
-  <div class="form-section">
-    <h3>SSL Certificate</h3>
-    <p class="hint-text">Self-signed certificate used for HTTPS. Regenerate after changing host or IP to update Subject Alternative Names.</p>
-    <div style="display:flex;align-items:center;gap:12px">
-      <button class="btn btn-secondary" id="btn-regen-cert">🔒 Regenerate SSL Certificate</button>
-      <span id="cert-status" style="font-size:0.82rem;color:#666"></span>
+      <!-- GemmaLink Server -->
+      <div class="form-section">
+        <h3>GemmaLink Server</h3>
+        <div class="form-row">
+          <div class="form-label">HTTP Host<small>bind / QR address</small></div>
+          <input class="form-input" id="cfg-http-host" type="text" placeholder="localhost" />
+        </div>
+        <div class="form-row">
+          <div class="form-label">HTTP Port</div>
+          <input class="form-input" id="cfg-http-port" type="text" maxlength="5" placeholder="8080" />
+        </div>
+        <div class="form-row">
+          <div class="form-label">HTTPS Port<small>required for camera</small></div>
+          <div>
+            <input class="form-input" id="cfg-https-port" type="text" maxlength="5" placeholder="8443" />
+            <div id="cfg-restart-warn" style="display:none;margin-top:5px" class="warn-text">⚠ Port changes require a
+              server restart</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-label">Upload Dir<small>temp image storage</small></div>
+          <input class="form-input" id="cfg-upload-dir" type="text" placeholder="uploads" />
+        </div>
+      </div>
+
+      <!-- Inference Server -->
+      <div class="form-section">
+        <h3>Inference Server (llama.cpp)</h3>
+
+        <!-- Mode selector -->
+        <div class="form-row">
+          <div class="form-label">Mode</div>
+          <div class="radio-group">
+            <label class="radio-label" id="lbl-local">
+              <input type="radio" name="llama-mode" value="local" id="radio-local" />
+              Local — managed by this server
+            </label>
+            <label class="radio-label" id="lbl-remote">
+              <input type="radio" name="llama-mode" value="remote" id="radio-remote" />
+              Remote — another machine on the network
+            </label>
+          </div>
+        </div>
+
+        <!-- Local panel -->
+        <div id="panel-local" class="mode-panel">
+          <div class="form-row">
+            <div class="form-label">Endpoint<small>local URL</small></div>
+            <div>
+              <input class="form-input" id="cfg-local-endpoint" type="text" placeholder="http://localhost:11434" />
+              <button class="btn btn-secondary btn-sm" id="btn-test-local">Test</button>
+              <div id="conn-status-local"></div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label">llama Binary<small>path on this machine</small></div>
+            <input class="form-input" id="cfg-llama-bin" type="text" placeholder="bin/linux/llama-server" />
+          </div>
+          <div class="form-row">
+            <div class="form-label">Binary Version<small>active release tag</small></div>
+            <input class="form-input" id="cfg-llama-bin-version" type="text" placeholder="b9095" />
+          </div>
+          <div class="form-row">
+            <div class="form-label">Model Path<small>.gguf file</small></div>
+            <input class="form-input" id="cfg-model-path" type="text" placeholder="models/gemma-4-e4b.gguf" />
+          </div>
+          <div class="form-row">
+            <div class="form-label">mmproj Path<small>vision projector</small></div>
+            <input class="form-input" id="cfg-mmproj-path" type="text" placeholder="models/mmproj-gemma-4-e4b.gguf" />
+          </div>
+          <div class="form-row">
+            <div class="form-label">Context Size<small>tokens</small></div>
+            <input class="form-input" id="cfg-context-size" type="text" maxlength="6" placeholder="4096" />
+          </div>
+        </div>
+
+        <!-- Remote panel -->
+        <div id="panel-remote" class="mode-panel" style="display:none">
+          <div class="form-row">
+            <div class="form-label">Endpoint<small>remote URL</small></div>
+            <div>
+              <input class="form-input" id="cfg-remote-endpoint" type="text" placeholder="http://192.168.1.32:11434" />
+              <button class="btn btn-secondary btn-sm" id="btn-test-remote">Test</button>
+              <div id="conn-status-remote"></div>
+            </div>
+          </div>
+          <div class="remote-notice">
+            Start llama-server on the remote machine with the Gemma model loaded,
+            then click <strong>Test</strong> to verify the connection.
+          </div>
+        </div>
+      </div><!-- /Inference Server -->
+
+      <!-- Model Download URLs — local mode only -->
+      <div class="form-section" id="section-model-urls">
+        <h3>Model Download URLs</h3>
+        <p class="hint-text">Override the default Gemma 4 download URLs. Click Reset to restore Q4_K_M defaults.</p>
+        <div class="form-row">
+          <div class="form-label">E2B (2B) URL</div>
+          <div class="inline-row">
+            <input class="form-input" id="cfg-url-e2b" type="text" />
+            <button class="btn btn-secondary btn-sm" id="btn-reset-e2b">Reset</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-label">E4B (4B) URL</div>
+          <div class="inline-row">
+            <input class="form-input" id="cfg-url-e4b" type="text" />
+            <button class="btn btn-secondary btn-sm" id="btn-reset-e4b">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Save -->
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="btn btn-primary" id="btn-save-cfg">Save Configuration</button>
+        <span id="cfg-status" style="font-size:0.82rem;color:#666"></span>
+      </div>
+
+      <!-- SSL Certificate -->
+      <div class="form-section">
+        <h3>SSL Certificate</h3>
+        <p class="hint-text">Self-signed certificate used for HTTPS. Regenerate after changing host or IP to update
+          Subject Alternative Names.</p>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="btn btn-secondary" id="btn-regen-cert">🔒 Regenerate SSL Certificate</button>
+          <span id="cert-status" style="font-size:0.82rem;color:#666"></span>
+        </div>
+      </div>
+
     </div>
-  </div>
+  </div><!-- /tab-config -->
 
-</div>
-</div><!-- /tab-config -->
-
-<script>
-  // ─── Tab switching ─────────────────────────────────────────────
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-    });
-  });
-
-  // ─── Logging ───────────────────────────────────────────────────
-  function log(msg, type = '') {
-    const box = document.getElementById('log-box');
-    const line = document.createElement('div');
-    if (type) line.className = 'log-' + type;
-    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    box.appendChild(line);
-    box.scrollTop = box.scrollHeight;
-  }
-
-  function setBar(id, pct) {
-    const el = document.getElementById(id);
-    el.style.width = pct + '%';
-    el.className = 'bar-fill' + (pct > 89 ? ' crit' : pct > 69 ? ' warn' : '');
-  }
-  function setDot(id, state) { document.getElementById(id).className = 'dot ' + state; }
-  function fmtGB(b) { return (b / 1073741824).toFixed(1) + ' GB'; }
-
-  // ─── Remote mode UI ────────────────────────────────────────────
-  let remoteMode = false;
-  function applyRemoteMode(remote) {
-    remoteMode = remote;
-    document.getElementById('card-binary').style.display   = remote ? 'none' : '';
-    document.getElementById('card-model').style.display    = remote ? 'none' : '';
-    document.getElementById('row-stop').style.display      = remote ? 'none' : '';
-    document.getElementById('remote-notice').style.display = remote ? 'block' : 'none';
-  }
-
-  // ─── Poll /api/sysinfo ─────────────────────────────────────────
-  async function pollSysinfo() {
-    try {
-      const d = await fetch('/api/sysinfo').then(r => r.json());
-      const ramPct  = Math.round(d.ram_used  / d.ram_total  * 100);
-      const diskPct = Math.round(d.disk_used / d.disk_total * 100);
-      document.getElementById('ram-label').textContent  = `${fmtGB(d.ram_used)} / ${fmtGB(d.ram_total)} (${ramPct}%)`;
-      document.getElementById('cpu-label').textContent  = `${d.cpu_pct.toFixed(1)}%`;
-      document.getElementById('disk-label').textContent = `${fmtGB(d.disk_used)} / ${fmtGB(d.disk_total)} (${diskPct}%)`;
-      setBar('ram-bar', ramPct);
-      setBar('cpu-bar', Math.round(d.cpu_pct));
-      setBar('disk-bar', diskPct);
-      const gpuEl = document.getElementById('gpu-info');
-      if (d.gpu_name) {
-        gpuEl.textContent  = `GPU: ${d.gpu_name} — VRAM ${fmtGB(d.gpu_vram_used)} / ${fmtGB(d.gpu_vram_total)}`;
-        gpuEl.style.color  = '#aaa';
-      } else {
-        gpuEl.textContent = 'GPU: not detected (CPU inference mode)';
-      }
-    } catch(e) { log('sysinfo error: ' + e.message, 'err'); }
-  }
-
-  // ─── Poll /api/status ──────────────────────────────────────────
-  async function pollStatus() {
-    try {
-      const d = await fetch('/api/status').then(r => r.json());
-      setDot('dot-server', 'ok');
-      document.getElementById('val-server').textContent = 'running';
-
-      applyRemoteMode(d.remote_mode === true);
-
-      if (d.ready) {
-        setDot('dot-llama', 'ok');
-        document.getElementById('val-llama').textContent = d.llama_addr || ('port ' + d.llama_port);
-        document.getElementById('btn-stop-llama').disabled = false;
-      } else {
-        setDot('dot-llama', 'missing');
-        document.getElementById('val-llama').textContent = 'not running';
-        document.getElementById('btn-stop-llama').disabled = true;
-      }
-
-      if (!remoteMode) {
-        if (d.bin_present) {
-          setDot('dot-bin', 'ok');
-          document.getElementById('label-bin').textContent = 'Binary found';
-          document.getElementById('val-bin').textContent   = d.bin_path;
-        } else {
-          setDot('dot-bin', 'missing');
-          document.getElementById('label-bin').textContent = 'Binary missing';
-          document.getElementById('val-bin').textContent   = d.bin_path;
-        }
-      }
-      if (d.model_present) {
-        setDot('dot-model', 'ok'); setDot('dot-gguf', 'ok');
-        document.getElementById('label-gguf').textContent = 'Model found';
-        document.getElementById('val-model').textContent  = remoteMode ? d.model_path : fmtGB(d.model_size);
-        document.getElementById('val-gguf').textContent   = d.model_path;
-      } else {
-        setDot('dot-model', 'missing'); setDot('dot-gguf', 'missing');
-        document.getElementById('label-gguf').textContent = 'Model not found';
-        document.getElementById('val-model').textContent  = 'missing';
-        document.getElementById('val-gguf').textContent   = d.model_path;
-      }
-    } catch(e) {
-      setDot('dot-server', 'missing');
-      log('status error: ' + e.message, 'err');
-    }
-  }
-
-  // ─── Downloads ─────────────────────────────────────────────────
-  document.getElementById('btn-dl-llama').addEventListener('click', () => {
-    log('Starting llama-server download…', 'ok');
-    startDownload('/api/download?target=llama', 'prog-llama-wrap', 'prog-llama-fill', 'prog-llama-label');
-  });
-  document.getElementById('btn-dl-e2b').addEventListener('click', () => {
-    log('Starting Gemma 4 E2B download…', 'ok');
-    startDownload('/api/download?target=model-e2b', 'prog-model-wrap', 'prog-model-fill', 'prog-model-label');
-  });
-  document.getElementById('btn-dl-e4b').addEventListener('click', () => {
-    log('Starting Gemma 4 E4B download…', 'ok');
-    startDownload('/api/download?target=model-e4b', 'prog-model-wrap', 'prog-model-fill', 'prog-model-label');
-  });
-
-  async function startDownload(url, wrapId, fillId, labelId) {
-    const wrap = document.getElementById(wrapId), fill = document.getElementById(fillId), label = document.getElementById(labelId);
-    wrap.classList.add('visible'); fill.style.width = '0%'; label.textContent = 'Starting…';
-    try {
-      const reader = (await fetch(url)).body.getReader();
-      const dec = new TextDecoder();
-      let buf = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n'); buf = lines.pop();
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const e = JSON.parse(line.slice(6));
-            if (e.pct  !== undefined) { fill.style.width = e.pct + '%'; label.textContent = `${e.pct}% — ${fmtGB(e.bytes)} / ${fmtGB(e.total)}`; }
-            if (e.done)  { label.textContent = 'Done!'; fill.style.background = '#44ff88'; log('Download complete.', 'ok'); pollStatus(); }
-            if (e.error) { label.textContent = 'Error: ' + e.error; fill.style.background = '#ff4444'; log('Download error: ' + e.error, 'err'); }
-          } catch { /* skip malformed */ }
-        }
-      }
-    } catch(e) { label.textContent = 'Failed: ' + e.message; log('Download failed: ' + e.message, 'err'); }
-  }
-
-  // ─── Stop llama-server ─────────────────────────────────────────
-  document.getElementById('btn-stop-llama').addEventListener('click', async () => {
-    await fetch('/api/llama/stop', { method: 'POST' });
-    log('Sent stop signal to llama-server', 'warn');
-    setTimeout(pollStatus, 1000);
-  });
-
-  // ─── Llama mode radio ──────────────────────────────────────────
-  function setLlamaMode(mode) {
-    const isRemote = mode === 'remote';
-    document.getElementById('radio-local').checked  = !isRemote;
-    document.getElementById('radio-remote').checked = isRemote;
-    document.getElementById('lbl-local').classList.toggle('active', !isRemote);
-    document.getElementById('lbl-remote').classList.toggle('active', isRemote);
-    document.getElementById('panel-local').style.display  = isRemote ? 'none' : '';
-    document.getElementById('panel-remote').style.display = isRemote ? '' : 'none';
-    applyRemoteMode(isRemote);
-  }
-  document.querySelectorAll('input[name="llama-mode"]').forEach(r => {
-    r.addEventListener('change', () => setLlamaMode(r.value));
-  });
-
-  // ─── Load config ───────────────────────────────────────────────
-  async function loadConfig() {
-    try {
-      const d = await fetch('/api/config').then(r => r.json());
-      document.getElementById('cfg-http-host').value  = d.http_host  ?? '';
-      document.getElementById('cfg-http-port').value  = d.http_port  ?? '';
-      document.getElementById('cfg-https-port').value = d.https_port ?? '';
-      document.getElementById('cfg-upload-dir').value = d.upload_dir ?? '';
-
-      const loc = d.llama_local  ?? {};
-      const rem = d.llama_remote ?? {};
-      document.getElementById('cfg-local-endpoint').value  = loc.endpoint     ?? 'http://localhost:11434';
-      document.getElementById('cfg-llama-bin').value       = loc.llama_bin    ?? '';
-      document.getElementById('cfg-model-path').value      = loc.model_path   ?? '';
-      document.getElementById('cfg-context-size').value    = loc.context_size ?? '';
-      document.getElementById('cfg-remote-endpoint').value = rem.endpoint     ?? '';
-
-      setLlamaMode(rem.enabled ? 'remote' : 'local');
-      log('Configuration loaded', 'ok');
-    } catch(e) { log('Failed to load config: ' + e.message, 'err'); }
-  }
-
-  // ─── Save config ───────────────────────────────────────────────
-  document.getElementById('btn-save-cfg').addEventListener('click', async () => {
-    const isRemote = document.getElementById('radio-remote').checked;
-    const body = {
-      http_host:  document.getElementById('cfg-http-host').value.trim(),
-      http_port:  document.getElementById('cfg-http-port').value.trim(),
-      https_port: document.getElementById('cfg-https-port').value.trim(),
-      upload_dir: document.getElementById('cfg-upload-dir').value.trim(),
-      llama_local: {
-        enabled:      !isRemote,
-        endpoint:     document.getElementById('cfg-local-endpoint').value.trim(),
-        llama_bin:    document.getElementById('cfg-llama-bin').value.trim(),
-        model_path:   document.getElementById('cfg-model-path').value.trim(),
-        context_size: parseInt(document.getElementById('cfg-context-size').value.trim(), 10) || 0,
-      },
-      llama_remote: {
-        enabled:  isRemote,
-        endpoint: document.getElementById('cfg-remote-endpoint').value.trim(),
-      },
-    };
-    const st = document.getElementById('cfg-status');
-    st.textContent = 'Saving…'; st.style.color = '#888';
-    try {
-      const d = await fetch('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(r => r.json());
-      if (d.ok) {
-        st.textContent = 'Saved ✓'; st.style.color = '#44ff88';
-        document.getElementById('cfg-restart-warn').style.display = d.ports_changed ? 'block' : 'none';
-        log('Configuration saved' + (d.ports_changed ? ' — restart required' : ''), d.ports_changed ? 'warn' : 'ok');
-        pollStatus();
-      } else { st.textContent = 'Error'; st.style.color = '#ff4444'; }
-    } catch(e) { st.textContent = 'Failed'; st.style.color = '#ff4444'; log('Config save error: ' + e.message, 'err'); }
-    setTimeout(() => { st.textContent = ''; st.style.color = ''; }, 4000);
-  });
-
-  // ─── Test connection ───────────────────────────────────────────
-  async function testEndpoint(endpoint, statusEl) {
-    statusEl.textContent = 'Testing…'; statusEl.className = ''; statusEl.style.cssText = 'font-size:0.8rem;color:#888';
-    try {
-      const d = await fetch(`/api/llama/test?endpoint=${encodeURIComponent(endpoint)}`).then(r => r.json());
-      if (d.reachable) {
-        statusEl.innerHTML = `<span class="badge badge-ok">✓ reachable${d.model_name ? ' — ' + d.model_name : ''}</span>`;
-        log(`llama-server reachable at ${endpoint}${d.model_name ? ' · model: ' + d.model_name : ''}`, 'ok');
-      } else {
-        statusEl.innerHTML = `<span class="badge badge-err">✗ not reachable</span>`;
-        log(`llama-server not reachable at ${endpoint}`, 'warn');
-      }
-    } catch(e) {
-      statusEl.innerHTML = `<span class="badge badge-err">✗ error</span>`;
-      log('Test failed: ' + e.message, 'err');
-    }
-  }
-  document.getElementById('btn-test-local').addEventListener('click', () => {
-    testEndpoint(
-      document.getElementById('cfg-local-endpoint').value.trim(),
-      document.getElementById('conn-status-local')
-    );
-  });
-  document.getElementById('btn-test-remote').addEventListener('click', () => {
-    testEndpoint(
-      document.getElementById('cfg-remote-endpoint').value.trim(),
-      document.getElementById('conn-status-remote')
-    );
-  });
-
-  // ─── Regenerate SSL cert ───────────────────────────────────────
-  document.getElementById('btn-regen-cert').addEventListener('click', async () => {
-    const st = document.getElementById('cert-status');
-    st.textContent = 'Generating…'; st.style.color = '#888';
-    log('Regenerating SSL certificate…');
-    try {
-      const d = await fetch('/api/cert/regenerate', { method: 'POST' }).then(r => r.json());
-      if (d.ok) {
-        st.textContent = 'Generated ✓'; st.style.color = '#44ff88';
-        log(`Certificate generated — SANs: ${d.hostnames.join(', ')} | IPs: ${d.ips.join(', ')}`, 'ok');
-      } else { st.textContent = 'Failed'; st.style.color = '#ff4444'; }
-    } catch(e) { st.textContent = 'Failed'; st.style.color = '#ff4444'; log('Cert error: ' + e.message, 'err'); }
-    setTimeout(() => { st.textContent = ''; st.style.color = ''; }, 5000);
-  });
-
-  // ─── QR Code ───────────────────────────────────────────────────
-  async function loadQR() {
-    try {
-      const d = await fetch('/api/qr-url').then(r => r.json());
-      document.getElementById('qr-url').textContent = d.url;
-      // Bust cache so the image always reflects the current IP/port
-      document.getElementById('qr-img').src = '/api/qr?' + Date.now();
-    } catch(e) { /* silent — server may not be ready */ }
-  }
-
-  // ─── Init ──────────────────────────────────────────────────────
-  log('Admin dashboard loaded', 'ok');
-  loadQR();
-  loadConfig();
-  pollSysinfo();
-  pollStatus();
-  setInterval(pollSysinfo, 5000);
-  setInterval(pollStatus, 4000);
-</script>
+  <script src="js/admin.js" defer></script>
 </body>
+
 </html>

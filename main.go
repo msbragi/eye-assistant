@@ -24,12 +24,8 @@ func main() {
 		log.Fatalf("Failed to create upload dir: %v", err)
 	}
 
-	// Start llama-server sidecar
+	// Sidecar is created but NOT auto-started — user starts it from the dashboard
 	sidecar := NewSidecar(cfg)
-	if err := sidecar.Start(); err != nil {
-		log.Printf("WARNING: llama-server could not start: %v", err)
-		log.Println("Server will run but /ask endpoint will return 503 until the model is ready.")
-	}
 
 	// Wire up HTTP handlers
 	handlers := NewHandlers(cfg, sidecar)
@@ -41,7 +37,12 @@ func main() {
 	mux.HandleFunc("/api/status", handlers.HandleStatus)
 	mux.HandleFunc("/api/sysinfo", handlers.HandleSysInfo)
 	mux.HandleFunc("/api/llama/stop", handlers.HandleLlamaStop)
+	mux.HandleFunc("/api/llama/start", handlers.HandleLlamaStart)
+	mux.HandleFunc("/api/llama/releases", handlers.HandleLlamaReleases)
+	mux.HandleFunc("/api/llama/select", handlers.HandleLlamaSelect)
 	mux.HandleFunc("/api/download", handlers.HandleDownload)
+	mux.HandleFunc("/api/model/select", handlers.HandleModelSelect)
+	mux.HandleFunc("/api/vision/toggle", handlers.HandleVisionToggle)
 	mux.HandleFunc("/api/config", handlers.HandleConfig)
 	mux.HandleFunc("/api/cert/regenerate", handlers.HandleCertRegenerate)
 	mux.HandleFunc("/api/llama/test", handlers.HandleLlamaTest)

@@ -9,12 +9,35 @@ import (
 
 const ConfigFile = "config.json"
 
+// Default Gemma 4 model download URLs (Q4_K_M quantization, lmstudio-community).
+const (
+	DefaultModelURLe2b   = "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf"
+	DefaultModelURLe4b   = "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf"
+	DefaultMmprojURLe2b  = "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-BF16.gguf"
+	DefaultMmprojURLe4b  = "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/mmproj-gemma-4-E4B-it-BF16.gguf"
+	DefaultModelPathE2B  = "models/gemma-4-e2b.gguf"
+	DefaultModelPathE4B  = "models/gemma-4-e4b.gguf"
+	DefaultMmprojPathE2B = "models/mmproj-gemma-4-e2b.gguf"
+	DefaultMmprojPathE4B = "models/mmproj-gemma-4-e4b.gguf"
+)
+
+// ModelURLs holds overridable download URLs for the Gemma model variants.
+type ModelURLs struct {
+	E2B       string `json:"e2b"`
+	E4B       string `json:"e4b"`
+	MmprojE2B string `json:"mmproj_e2b"`
+	MmprojE4B string `json:"mmproj_e4b"`
+}
+
 type LlamaLocal struct {
-	Enabled     bool   `json:"enabled"`
-	Endpoint    string `json:"endpoint"`   // e.g. "http://localhost:11434"
-	ModelPath   string `json:"model_path"`
-	LlamaBin    string `json:"llama_bin"`
-	ContextSize int    `json:"context_size"`
+	Enabled         bool   `json:"enabled"`
+	Endpoint        string `json:"endpoint"` // e.g. "http://localhost:11434"
+	ModelPath       string `json:"model_path"`
+	MmprojPath      string `json:"mmproj_path"`    // multimodal projector for vision
+	VisionEnabled   bool   `json:"vision_enabled"` // whether to pass --mmproj to llama-server
+	LlamaBin        string `json:"llama_bin"`
+	LlamaBinVersion string `json:"llama_bin_version"` // active release tag, e.g. "b9095"
+	ContextSize     int    `json:"context_size"`
 }
 
 type LlamaRemote struct {
@@ -28,6 +51,7 @@ type Config struct {
 	HTTPSPort   string      `json:"https_port"`
 	LlamaLocal  LlamaLocal  `json:"llama_local"`
 	LlamaRemote LlamaRemote `json:"llama_remote"`
+	ModelURLs   ModelURLs   `json:"model_urls"`
 	UploadDir   string      `json:"upload_dir"`
 }
 
@@ -73,6 +97,20 @@ func loadConfig(path string) (*Config, error) {
 		default:
 			cfg.LlamaLocal.LlamaBin = "bin/linux/llama-server"
 		}
+	}
+
+	// Model URL defaults
+	if cfg.ModelURLs.E2B == "" {
+		cfg.ModelURLs.E2B = DefaultModelURLe2b
+	}
+	if cfg.ModelURLs.E4B == "" {
+		cfg.ModelURLs.E4B = DefaultModelURLe4b
+	}
+	if cfg.ModelURLs.MmprojE2B == "" {
+		cfg.ModelURLs.MmprojE2B = DefaultMmprojURLe2b
+	}
+	if cfg.ModelURLs.MmprojE4B == "" {
+		cfg.ModelURLs.MmprojE4B = DefaultMmprojURLe4b
 	}
 
 	return cfg, nil

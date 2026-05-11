@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="css/eye.css" rel="stylesheet" />
   <title>GemmaLink</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 </head>
 <body>
 
@@ -96,6 +97,8 @@
         snapshot.src = URL.createObjectURL(blob);
         snapshot.style.display = 'block';
         video.style.display = 'none';
+        cameraActive = false;
+        if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
         btnCamera.textContent = '🔄 Retake';
         btnAsk.disabled = false;
       }, 'image/jpeg', 0.85);

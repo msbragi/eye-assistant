@@ -6,6 +6,10 @@ gemmalink.exe
 models/*.gguf
 models/*.bin
 
+# LLama Server Runtime
+bin/linux
+bin/windows
+
 # Uploaded images (runtime temp files)
 uploads/
 
@@ -17,7 +21,3 @@ uploads/
 .DS_Store
 Thumbs.db
 .vscode/
-
-# llama-server binaries (downloaded separately)
-bin/linux/llama-server
-bin/windows/llama-server.exe
