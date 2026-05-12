@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -354,7 +353,24 @@ func (h *Handlers) HandleLlamaReleases(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	type githubAsset struct {
+		Name               string `json:"name"`
+		BrowserDownloadURL string `json:"browser_download_url"`
+	}
+
+	type githubRelease struct {
+		TagName string        `json:"tag_name"`
+		Assets  []githubAsset `json:"assets"`
+	}
+
+	type releaseEntry struct {
+		Tag  string `json:"tag"`
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet,
 		"https://api.github.com/repos/ggerganov/llama.cpp/releases?per_page=15", nil)
 	if err != nil {
@@ -371,53 +387,73 @@ func (h *Handlers) HandleLlamaReleases(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	var releases []struct {
-		TagName string `json:"tag_name"`
-		Body    string `json:"body"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
-		http.Error(w, "failed to parse GitHub response: "+err.Error(), http.StatusInternalServerError)
+	var githubReleases []githubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&githubReleases); err != nil {
+		http.Error(w, "Failed to parse GitHub response: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// CPU builds are linked in the release body text, not as GitHub assets.
-	// Windows: llama-bXXXX-bin-win-cpu-x64.zip
-	// Linux:   llama-bXXXX-bin-ubuntu-x64.tar.gz
-	type releaseEntry struct {
-		Tag  string `json:"tag"`
-		Name string `json:"name"`
-		URL  string `json:"url"`
-	}
-
-	urlPattern := `https://github\.com/ggml-org/llama\.cpp/releases/download/[^\s\)"]+`
-	re := regexp.MustCompile(urlPattern)
-
 	var result []releaseEntry
-	for _, rel := range releases {
-		urls := re.FindAllString(rel.Body, -1)
-		for _, u := range urls {
-			n := filepath.Base(u)
-			nl := strings.ToLower(n)
-			var match bool
-			if runtime.GOOS == "windows" {
-				match = strings.Contains(nl, "bin-win-cpu-x64") && strings.HasSuffix(nl, ".zip")
-			} else {
-				match = strings.Contains(nl, "bin-ubuntu-x64") && strings.HasSuffix(nl, ".tar.gz") &&
-					!strings.Contains(nl, "cuda") && !strings.Contains(nl, "rocm") &&
-					!strings.Contains(nl, "vulkan") && !strings.Contains(nl, "sycl")
+
+	for _, rel := range githubReleases {
+		var bestAsset githubAsset
+		highestScore := -1
+
+		for _, asset := range rel.Assets {
+			nameLower := strings.ToLower(asset.Name)
+			score := 0
+
+			// Escludiamo dipendenze pesanti (CUDA, ROCm, etc.) per restare "Zero-Footprint"
+			if strings.Contains(nameLower, "cuda") ||
+				strings.Contains(nameLower, "rocm") ||
+				strings.Contains(nameLower, "sycl") ||
+				strings.Contains(nameLower, "arm64") {
+				continue
 			}
-			if match {
-				result = append(result, releaseEntry{
-					Tag:  rel.TagName,
-					Name: n,
-					URL:  u,
-				})
-				break // one per release
+
+			if runtime.GOOS == "windows" {
+				if !strings.HasSuffix(nameLower, ".zip") {
+					continue
+				}
+				// Priorità Windows
+				if strings.Contains(nameLower, "win-vulkan-x64") {
+					score = 100
+				} else if strings.Contains(nameLower, "win-avx2-x64") {
+					score = 80
+				} else if strings.Contains(nameLower, "win-x64") {
+					score = 50
+				}
+			} else {
+				// Priorità Linux (WSL/Debian)
+				if !strings.HasSuffix(nameLower, ".tar.gz") {
+					continue
+				}
+				if strings.Contains(nameLower, "ubuntu") || strings.Contains(nameLower, "linux-x64") {
+					score = 100
+				}
+			}
+
+			if score > highestScore {
+				highestScore = score
+				bestAsset = asset
 			}
 		}
+
+		if highestScore > 0 {
+			result = append(result, releaseEntry{
+				Tag:  rel.TagName,
+				Name: bestAsset.Name,
+				URL:  bestAsset.BrowserDownloadURL,
+			})
+		}
+
 		if len(result) >= 10 {
 			break
 		}
+	}
+
+	if result == nil {
+		result = []releaseEntry{}
 	}
 
 	json.NewEncoder(w).Encode(result)
@@ -437,8 +473,10 @@ func (h *Handlers) HandleLlamaSelect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "tag required", http.StatusBadRequest)
 		return
 	}
+	assetURL := r.URL.Query().Get("url")
 
 	h.cfg.LlamaLocal.LlamaBinVersion = tag
+	h.cfg.LlamaLocal.LlamaBinURL = assetURL
 	if err := h.cfg.Save(ConfigFile); err != nil {
 		http.Error(w, "failed to save config: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -461,7 +499,10 @@ func (h *Handlers) HandleLlamaSelect(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) resolveDownload(target string) (downloadURL, destPath string, ok bool) {
 	switch target {
 	case "llama":
-		u := llamaBinaryURLForTag(h.cfg.LlamaLocal.LlamaBinVersion)
+		u := h.cfg.LlamaLocal.LlamaBinURL
+		if u == "" {
+			u = llamaBinaryURLForTag(h.cfg.LlamaLocal.LlamaBinVersion)
+		}
 		return u, h.cfg.LlamaLocal.LlamaBin, true
 	case "model-e2b":
 		u := h.cfg.ModelURLs.E2B
@@ -551,6 +592,10 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 		sendEvt(map[string]string{"error": err.Error()})
 		return
 	}
+
+	// Log the URL so it can be verified/downloaded manually
+	sendEvt(map[string]any{"info": "fetching: " + url})
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		sendEvt(map[string]string{"error": err.Error()})
@@ -564,7 +609,20 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	total := resp.ContentLength
-	tmp := destPath + ".tmp"
+
+	// For llama binaries the download is an archive that needs extraction.
+	// For all other targets (models) the URL points directly to the final file.
+	var archivePath string
+	if target == "llama" {
+		archiveExt := ".tar.gz"
+		if strings.HasSuffix(strings.ToLower(url), ".zip") {
+			archiveExt = ".zip"
+		}
+		archivePath = destPath + archiveExt
+	} else {
+		archivePath = destPath
+	}
+	tmp := archivePath + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
 		sendEvt(map[string]string{"error": err.Error()})
@@ -618,18 +676,21 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	f.Close()
-	if err := os.Rename(tmp, destPath); err != nil {
+	if err := os.Rename(tmp, archivePath); err != nil {
 		sendEvt(map[string]string{"error": err.Error()})
 		return
 	}
 
 	// For llama binary: extract the actual executable from the archive
 	if target == "llama" {
-		if err := extractLlamaBinary(destPath); err != nil {
-			os.Remove(destPath)
-			sendEvt(map[string]string{"error": "extract failed: " + err.Error()})
+		written, err := extractLlamaBinary(archivePath, destPath)
+		if err != nil {
+			// Keep the archive so it can be inspected manually
+			sendEvt(map[string]string{"error": fmt.Sprintf("extract failed: %s (archive kept at %s)", err.Error(), archivePath)})
 			return
 		}
+		os.Remove(archivePath)
+		cleanBinDir(filepath.Dir(destPath), written)
 	}
 
 	// Make binary executable on Linux/Mac
@@ -642,39 +703,71 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 
 // extractLlamaBinary extracts llama-server (or llama-server.exe) and all
 // required shared libraries from the downloaded archive (tar.gz on Linux,
-// zip on Windows) at archivePath, replacing the archive file with the binary.
-func extractLlamaBinary(archivePath string) error {
+// zip on Windows) at archivePath, writing the binary to destPath.
+// Returns the set of basenames written to destDir.
+func extractLlamaBinary(archivePath, destPath string) ([]string, error) {
 	binName := "llama-server"
 	if runtime.GOOS == "windows" {
 		binName = "llama-server.exe"
 	}
 
-	destDir := filepath.Dir(archivePath)
+	destDir := filepath.Dir(destPath)
 
 	if runtime.GOOS == "windows" {
-		return extractFromZipAll(archivePath, binName, destDir)
+		return extractFromZipAll(archivePath, binName, destDir, destPath)
 	}
-	return extractFromTarGzAll(archivePath, binName, destDir)
+	return extractFromTarGzAll(archivePath, binName, destDir, destPath)
+}
+
+// cleanBinDir removes old managed files (libs, old binary) from dir that are
+// not part of the freshly extracted set.
+func cleanBinDir(dir string, keep []string) {
+	if len(keep) == 0 {
+		return
+	}
+	keepSet := make(map[string]bool, len(keep))
+	for _, f := range keep {
+		keepSet[f] = true
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if keepSet[name] {
+			continue
+		}
+		lower := strings.ToLower(name)
+		isManaged := strings.HasPrefix(lower, "lib") ||
+			strings.HasSuffix(lower, ".dll") ||
+			name == "llama-server" || name == "llama-server.exe"
+		if isManaged {
+			log.Printf("cleanBinDir: removing old file %s", filepath.Join(dir, name))
+			os.Remove(filepath.Join(dir, name))
+		}
+	}
 }
 
 // extractFromTarGzAll extracts binName + all .so/.so.* files into destDir,
-// then removes the archive.
-func extractFromTarGzAll(archivePath, binName, destDir string) error {
+// writing the binary to destPath. Returns the basenames of files written.
+func extractFromTarGzAll(archivePath, binName, destDir, destPath string) ([]string, error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer gz.Close()
 
-	binTmp := archivePath + ".bin.tmp"
+	binTmp := destPath + ".bin.tmp"
 	tr := tar.NewReader(gz)
 	foundBin := false
+	var written []string
 
 	for {
 		hdr, err := tr.Next()
@@ -682,7 +775,7 @@ func extractFromTarGzAll(archivePath, binName, destDir string) error {
 			break
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		base := filepath.Base(hdr.Name)
@@ -699,15 +792,17 @@ func extractFromTarGzAll(archivePath, binName, destDir string) error {
 			if isBin {
 				destFile = binTmp
 				foundBin = true
+			} else {
+				written = append(written, base)
 			}
 			out, err := os.Create(destFile)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			_, err = io.Copy(out, tr)
 			out.Close()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if isBin {
 				os.Chmod(destFile, 0755) //nolint:errcheck
@@ -724,30 +819,34 @@ func extractFromTarGzAll(archivePath, binName, destDir string) error {
 			symlinkPath := filepath.Join(destDir, linkName)
 			os.Remove(symlinkPath)
 			os.Symlink(linkTarget, symlinkPath) //nolint:errcheck
+			written = append(written, linkName)
 		}
 	}
 
 	if !foundBin {
 		os.Remove(binTmp)
-		return fmt.Errorf("%s not found in archive", binName)
+		return nil, fmt.Errorf("%s not found in archive", binName)
 	}
 
-	// Replace the archive file with the extracted binary.
-	f.Close()
-	os.Remove(archivePath)
-	return os.Rename(binTmp, archivePath)
+	// Move the binary into its final position.
+	if err := os.Rename(binTmp, destPath); err != nil {
+		return nil, err
+	}
+	written = append(written, filepath.Base(destPath))
+	return written, nil
 }
 
 // extractFromZipAll extracts binName + all .dll files into destDir,
-// then removes the archive.
-func extractFromZipAll(archivePath, binName, destDir string) error {
+// writing the binary to destPath. Returns the basenames of files written.
+func extractFromZipAll(archivePath, binName, destDir, destPath string) ([]string, error) {
 	r, err := zip.OpenReader(archivePath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer r.Close()
 
 	foundBin := false
+	var written []string
 	for _, f := range r.File {
 		base := filepath.Base(f.Name)
 		isBin := base == binName
@@ -755,31 +854,33 @@ func extractFromZipAll(archivePath, binName, destDir string) error {
 		if !isBin && !isDll {
 			continue
 		}
-		destFile := filepath.Join(destDir, base)
+		outPath := filepath.Join(destDir, base)
 		if isBin {
-			destFile = archivePath
+			outPath = destPath
 			foundBin = true
 		}
 		rc, err := f.Open()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		out, err := os.Create(destFile)
+		out, err := os.Create(outPath)
 		if err != nil {
 			rc.Close()
-			return err
+			return nil, err
 		}
 		_, err = io.Copy(out, rc)
 		out.Close()
 		rc.Close()
 		if err != nil {
-			return err
+			return nil, err
 		}
+		written = append(written, base)
 	}
 	if !foundBin {
-		return fmt.Errorf("%s not found in archive", binName)
+		return nil, fmt.Errorf("%s not found in archive", binName)
 	}
-	return nil
+	// Ensure the binary basename is in the written set (it was stored as binName)
+	return written, nil
 }
 
 // -----------------------------------------------------------------
@@ -867,8 +968,36 @@ func (h *Handlers) HandleConfig(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(h.cfg)
 
 	case http.MethodPost:
+		// Decode into a raw map first so we can distinguish a partial update
+		// (e.g. only sysinfo_refresh_seconds) from a full config save.
+		var raw map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		// Partial update: only sysinfo_refresh_seconds
+		if len(raw) == 1 {
+			if v, ok := raw["sysinfo_refresh_seconds"]; ok {
+				var sec int
+				if err := json.Unmarshal(v, &sec); err != nil || sec < 1 {
+					http.Error(w, "invalid sysinfo_refresh_seconds", http.StatusBadRequest)
+					return
+				}
+				h.cfg.SysinfoRefreshSeconds = sec
+				if err := h.cfg.Save(ConfigFile); err != nil {
+					http.Error(w, "failed to save config: "+err.Error(), http.StatusInternalServerError)
+					return
+				}
+				json.NewEncoder(w).Encode(map[string]any{"ok": true})
+				return
+			}
+		}
+
+		// Full config update — re-encode raw map back into a Config struct
+		fullJSON, _ := json.Marshal(raw)
 		var incoming Config
-		if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+		if err := json.Unmarshal(fullJSON, &incoming); err != nil {
 			http.Error(w, "invalid JSON", http.StatusBadRequest)
 			return
 		}
@@ -891,6 +1020,9 @@ func (h *Handlers) HandleConfig(w http.ResponseWriter, r *http.Request) {
 		h.cfg.LlamaLocal = incoming.LlamaLocal
 		h.cfg.LlamaRemote = incoming.LlamaRemote
 		h.cfg.ModelURLs = incoming.ModelURLs
+		if incoming.SysinfoRefreshSeconds > 0 {
+			h.cfg.SysinfoRefreshSeconds = incoming.SysinfoRefreshSeconds
+		}
 
 		// Reset LLM client so next /ask rebuilds with new endpoint
 		h.llm = nil

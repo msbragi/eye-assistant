@@ -43,12 +43,13 @@ mkdir -p "$RELEASES"
 write_config_linux() {
   cat > "$STAGING/config.json" <<EOF
 {
+  "sysinfo_refresh_seconds": 5,
   "http_host": "localhost",
-  "http_port": "8080",
-  "https_port": "8443",
+  "http_port": "9380",
+  "https_port": "9381",
   "llama_local": {
     "enabled": false,
-    "endpoint": "http://localhost:8080",
+    "endpoint": "http://localhost:9382",
     "model_path": "models/gemma-4-e2b.gguf",
     "mmproj_path": "models/mmproj-gemma-4-e2b.gguf",
     "vision_enabled": false,
@@ -74,12 +75,13 @@ EOF
 write_config_windows() {
   cat > "$STAGING/config.json" <<'EOF'
 {
+  "sysinfo_refresh_seconds": 5,
   "http_host": "localhost",
-  "http_port": "8080",
-  "https_port": "8443",
+  "http_port": "9380",
+  "https_port": "9381",
   "llama_local": {
     "enabled": false,
-    "endpoint": "http://localhost:8080",
+    "endpoint": "http://localhost:9382",
     "model_path": "models/gemma-4-e2b.gguf",
     "mmproj_path": "models/mmproj-gemma-4-e2b.gguf",
     "vision_enabled": false,

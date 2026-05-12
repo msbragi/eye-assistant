@@ -10,6 +10,7 @@
     "vision_enabled": false,
     "llama_bin": "bin/linux/llama-server",
     "llama_bin_version": "b9103",
+    "llama_bin_url": "",
     "context_size": 4096
   },
   "llama_remote": {
@@ -19,8 +20,11 @@
   "model_urls": {
     "e2b": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
     "e4b": "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf",
-    "mmproj_e2b": "",
-    "mmproj_e4b": ""
+    "e31b": "",
+    "mmproj_e2b": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-BF16.gguf",
+    "mmproj_e4b": "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/mmproj-gemma-4-E4B-it-BF16.gguf",
+    "mmproj_e31b": ""
   },
-  "upload_dir": "uploads"
+  "upload_dir": "uploads",
+  "sysinfo_refresh_seconds": 10
 }

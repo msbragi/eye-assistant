@@ -43,6 +43,7 @@ type LlamaLocal struct {
 	VisionEnabled   bool   `json:"vision_enabled"` // whether to pass --mmproj to llama-server
 	LlamaBin        string `json:"llama_bin"`
 	LlamaBinVersion string `json:"llama_bin_version"` // active release tag, e.g. "b9095"
+	LlamaBinURL     string `json:"llama_bin_url"`     // actual asset download URL for LlamaBinVersion
 	ContextSize     int    `json:"context_size"`
 }
 
@@ -52,13 +53,14 @@ type LlamaRemote struct {
 }
 
 type Config struct {
-	HTTPHost    string      `json:"http_host"`
-	HTTPPort    string      `json:"http_port"`
-	HTTPSPort   string      `json:"https_port"`
-	LlamaLocal  LlamaLocal  `json:"llama_local"`
-	LlamaRemote LlamaRemote `json:"llama_remote"`
-	ModelURLs   ModelURLs   `json:"model_urls"`
-	UploadDir   string      `json:"upload_dir"`
+	HTTPHost              string      `json:"http_host"`
+	HTTPPort              string      `json:"http_port"`
+	HTTPSPort             string      `json:"https_port"`
+	LlamaLocal            LlamaLocal  `json:"llama_local"`
+	LlamaRemote           LlamaRemote `json:"llama_remote"`
+	ModelURLs             ModelURLs   `json:"model_urls"`
+	UploadDir             string      `json:"upload_dir"`
+	SysinfoRefreshSeconds int         `json:"sysinfo_refresh_seconds"` // dashboard poll interval; 0 = default (5s)
 }
 
 // IsRemote returns true when llama_remote.enabled is set.

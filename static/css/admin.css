@@ -409,11 +409,11 @@
         transition: transform 0.2s;
     }
 
-    .toggle-switch input:checked + .toggle-slider {
+    .toggle-switch input:checked+.toggle-slider {
         background: #5865f2;
     }
 
-    .toggle-switch input:checked + .toggle-slider::before {
+    .toggle-switch input:checked+.toggle-slider::before {
         transform: translateX(20px);
     }
 
@@ -536,12 +536,33 @@
         margin-top: 14px;
     }
 
-    #cfg-remote-endpoint, #cfg-local-endpoint {
+    #cfg-remote-endpoint,
+    #cfg-local-endpoint {
         width: 80%;
     }
 
-    .conn-status-remote, .conn-status-local {
+    .conn-status-remote,
+    .conn-status-local {
         font-size: 0.8rem;
         margin-top: 4px;
         display: block;
+    }
+
+    #sysinfo-refresh {
+        font-size: 0.85rem;
+        color: #ccc;
+        background: #111;
+        border: 1px solid #2a2a2a;
+        border-radius: 6px;
+        padding: 7px 10px;
+        font-family: monospace;
+        transition: border-color 0.15s;
+    }
+
+    span.sysynfo-refresh-text {
+        float: right;
+        padding: 0px;
+        margin-top: -7px;
+        text-transform: capitalize;
+        font-size: 12px;
     }

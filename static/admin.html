@@ -52,7 +52,7 @@
 
       <!-- System Resources -->
       <div class="card">
-        <h2>System Resources</h2>
+        <h2>System Resources <span class="sysynfo-refresh-text">refresh every <input id="sysinfo-refresh" type="number" min="1" max="60" value="5"> sec.</span></h2>
         <div class="resource-row">
           <div class="resource-label"><span>RAM</span><span id="ram-label">—</span></div>
           <div class="bar-track">
@@ -121,7 +121,10 @@
         <div class="actions-row" id="llama-actions" style="flex-wrap:wrap;gap:8px">
           <button class="btn btn-primary" id="btn-dl-llama" style="display:none">⬇ Download</button>
           <button class="btn btn-secondary" id="btn-cancel-dl-llama" style="display:none">✕ Cancel</button>
-          <button class="btn btn-primary" id="btn-use-llama" style="display:none">✓ Use this version</button>
+          <!-- Maybe we actvate later -->
+          <span style="display: none;">
+            <button class="btn btn-primary" id="btn-use-llama" style="display:none">✓ Use this version</button>
+          </span>
         </div>
         <div id="llama-active-badge" style="display:none;font-size:0.8rem;color:#44ff88;margin-top:6px"></div>
         <div class="progress-wrap" id="prog-llama-wrap">

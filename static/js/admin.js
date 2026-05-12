@@ -200,8 +200,10 @@ document.getElementById('btn-dl-llama').addEventListener('click', async () => {
   const wrap  = document.getElementById('prog-llama-wrap');
   wrap.classList.add('visible'); fill.style.width = '0%'; fill.style.background = '';
 
-  // Tell server which tag to download before starting
-  await fetch(`/api/llama/select?tag=${encodeURIComponent(tag)}`, { method: 'POST' });
+  // Tell server which tag (and real asset URL) to download before starting
+  const releaseEntry = llamaReleases.find(r => r.tag === tag);
+  const assetURL = releaseEntry ? releaseEntry.url : '';
+  await fetch(`/api/llama/select?tag=${encodeURIComponent(tag)}&url=${encodeURIComponent(assetURL)}`, { method: 'POST' });
   log(`Downloading llama-server ${tag}…`, 'ok');
 
   const ok = await streamDownload('/api/download?target=llama', fill, label, controller.signal);
@@ -226,7 +228,9 @@ document.getElementById('btn-use-llama').addEventListener('click', async () => {
   const tag = document.getElementById('llama-selector').value;
   if (!tag) return;
   try {
-    const d = await fetch(`/api/llama/select?tag=${encodeURIComponent(tag)}`, { method: 'POST' }).then(r => r.json());
+    const releaseEntry = llamaReleases.find(r => r.tag === tag);
+    const assetURL = releaseEntry ? releaseEntry.url : '';
+    const d = await fetch(`/api/llama/select?tag=${encodeURIComponent(tag)}&url=${encodeURIComponent(assetURL)}`, { method: 'POST' }).then(r => r.json());
     if (d.ok) { log(`llama-server active version set to ${tag}`, 'ok'); pollStatus(); }
   } catch (e) { log('Select failed: ' + e.message, 'err'); }
 });
@@ -399,6 +403,7 @@ async function streamDownload(url, fill, label, signal) {
             label.textContent = `${e.pct}% — ${fmtGB(e.bytes)} / ${fmtGB(e.total)}`;
           }
           if (e.done) { fill.style.background = '#44ff88'; label.textContent = 'Done!'; return true; }
+          if (e.info) { log(e.info, 'ok'); }
           if (e.error) { fill.style.background = '#ff4444'; label.textContent = 'Error: ' + e.error; log('Download error: ' + e.error, 'err'); return false; }
         } catch { /* skip */ }
       }
@@ -466,6 +471,9 @@ async function loadConfig() {
     document.getElementById('cfg-http-port').value = d.http_port ?? '';
     document.getElementById('cfg-https-port').value = d.https_port ?? '';
     document.getElementById('cfg-upload-dir').value = d.upload_dir ?? '';
+    const refreshVal = d.sysinfo_refresh_seconds || 5;
+    document.getElementById('sysinfo-refresh').value = refreshVal;
+    applySysinfoRefresh(refreshVal);
 
     const loc = d.llama_local ?? {};
     const rem = d.llama_remote ?? {};
@@ -513,6 +521,7 @@ document.getElementById('btn-save-cfg').addEventListener('click', async () => {
       e4b:  document.getElementById('cfg-url-e4b').value.trim(),
       //e31b: document.getElementById('cfg-url-e31b').value.trim(),
     },
+    sysinfo_refresh_seconds: parseInt(document.getElementById('sysinfo-refresh').value, 10) || 5,
   };
   const st = document.getElementById('cfg-status');
   st.textContent = 'Saving…'; st.style.color = '#888';
@@ -594,12 +603,38 @@ async function loadQR() {
   } catch (e) { /* silent — server may not be ready */ }
 }
 
+// ─── Sysinfo refresh interval (driven by config) ──────────────
+let sysinfoTimer = null;
+function applySysinfoRefresh(seconds) {
+  const ms = ((seconds > 0) ? seconds : 5) * 1000;
+  if (sysinfoTimer) clearInterval(sysinfoTimer);
+  sysinfoTimer = setInterval(pollSysinfo, ms);
+}
+
+// Live-save sysinfo refresh with debounce (handles arrow keys / typing)
+let sysinfoRefreshDebounce = null;
+document.getElementById('sysinfo-refresh').addEventListener('input', () => {
+  const v = parseInt(document.getElementById('sysinfo-refresh').value, 10);
+  if (!v || v < 1) return;
+  applySysinfoRefresh(v); // apply immediately
+  clearTimeout(sysinfoRefreshDebounce);
+  sysinfoRefreshDebounce = setTimeout(async () => {
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sysinfo_refresh_seconds: v }),
+      });
+    } catch (e) { log('Failed to save refresh interval: ' + e.message, 'err'); }
+  }, 800);
+});
+
 // ─── Init ──────────────────────────────────────────────────────
 log('Admin dashboard loaded', 'ok');
 loadQR();
-loadConfig();
+loadConfig();       // calls applySysinfoRefresh() once config is loaded
 loadLlamaReleases();
 pollSysinfo();
 pollStatus();
-setInterval(pollSysinfo, 5000);
+applySysinfoRefresh(5); // default until config arrives
 setInterval(pollStatus, 4000);
