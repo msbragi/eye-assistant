@@ -41,7 +41,7 @@ mkdir -p "$RELEASES"
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 write_config_linux() {
-  cat > "$STAGING/config.json" <<EOF
+  cat > "$STAGING/config.gl" <<EOF
 {
   "sysinfo_refresh_seconds": 5,
   "http_host": "localhost",
@@ -73,7 +73,7 @@ EOF
 }
 
 write_config_windows() {
-  cat > "$STAGING/config.json" <<'EOF'
+  cat > "$STAGING/config.gl" <<'EOF'
 {
   "sysinfo_refresh_seconds": 5,
   "http_host": "localhost",
@@ -105,12 +105,19 @@ EOF
 }
 
 cleanup_staging() {
-  rm -f "$STAGING/gemmalink" "$STAGING/gemmalink.exe" "$STAGING/config.json" "$STAGING/README.md"
+  # ${STAGING:?} è una protezione: se la variabile è vuota, 
+  # lo script abortisce invece di cancellare dalla root.
+  echo "- Prepare staging folder ${STAGING}"
+  rm -rf "${STAGING:?}"
+  mkdir -p "$STAGING"
 }
 
 # ─── Build Linux ──────────────────────────────────────────────────────────────
 build_linux() {
+  cleanup_staging
+
   echo "▶ Building linux/amd64 v${VERSION}…"
+
   GOOS=linux GOARCH=amd64 go build \
     -ldflags "$LDFLAGS" \
     -o "$STAGING/gemmalink" \
@@ -121,13 +128,15 @@ build_linux() {
 
   local ARCHIVE="$RELEASES/gemmalink-${VERSION}-linux-amd64.tar.gz"
   tar -czf "$ARCHIVE" -C "$STAGING" .
-  cleanup_staging
   echo "   ✓ $ARCHIVE"
 }
 
 # ─── Build Windows ────────────────────────────────────────────────────────────
 build_windows() {
+  cleanup_staging
+
   echo "▶ Building windows/amd64 v${VERSION}…"
+
   GOOS=windows GOARCH=amd64 go build \
     -ldflags "$LDFLAGS" \
     -o "$STAGING/gemmalink.exe" \
@@ -137,7 +146,11 @@ build_windows() {
   [[ -f "$ROOT/README.md" ]] && cp "$ROOT/README.md" "$STAGING/README.md"
 
   local ARCHIVE="$RELEASES/gemmalink-${VERSION}-windows-amd64.zip"
-  (cd "$STAGING" && zip -r "$ARCHIVE" .)
+  
+  # FIX: Rimuovi l'archivio precedente per evitare merge di file obsoleti (es. vecchi config.json)
+  rm -f "$ARCHIVE"
+
+  (cd "$STAGING" && zip -rq "$ARCHIVE" .)
   cleanup_staging
   echo "   ✓ $ARCHIVE"
 }

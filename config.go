@@ -7,7 +7,10 @@ import (
 	"runtime"
 )
 
-const ConfigFile = "config.json"
+const (
+	ConfigFile       = "config.json"
+	GoldenConfigFile = "config.gl" // File distribuito con gli aggiornamenti
+)
 
 // Default Gemma 4 model download URLs (Q4_K_M quantization, lmstudio-community).
 const (
@@ -25,7 +28,6 @@ const (
 	DefaultMmprojPathE31B = "models/mmproj-gemma-4-e31b.gguf"
 )
 
-// ModelURLs holds overridable download URLs for the Gemma model variants.
 type ModelURLs struct {
 	E2B        string `json:"e2b"`
 	E4B        string `json:"e4b"`
@@ -37,19 +39,19 @@ type ModelURLs struct {
 
 type LlamaLocal struct {
 	Enabled         bool   `json:"enabled"`
-	Endpoint        string `json:"endpoint"` // e.g. "http://localhost:11434"
+	Endpoint        string `json:"endpoint"`
 	ModelPath       string `json:"model_path"`
-	MmprojPath      string `json:"mmproj_path"`    // multimodal projector for vision
-	VisionEnabled   bool   `json:"vision_enabled"` // whether to pass --mmproj to llama-server
+	MmprojPath      string `json:"mmproj_path"`
+	VisionEnabled   bool   `json:"vision_enabled"`
 	LlamaBin        string `json:"llama_bin"`
-	LlamaBinVersion string `json:"llama_bin_version"` // active release tag, e.g. "b9095"
-	LlamaBinURL     string `json:"llama_bin_url"`     // actual asset download URL for LlamaBinVersion
+	LlamaBinVersion string `json:"llama_bin_version"`
+	LlamaBinURL     string `json:"llama_bin_url"`
 	ContextSize     int    `json:"context_size"`
 }
 
 type LlamaRemote struct {
 	Enabled  bool   `json:"enabled"`
-	Endpoint string `json:"endpoint"` // e.g. "http://192.168.1.32:11434"
+	Endpoint string `json:"endpoint"`
 }
 
 type Config struct {
@@ -60,16 +62,13 @@ type Config struct {
 	LlamaRemote           LlamaRemote `json:"llama_remote"`
 	ModelURLs             ModelURLs   `json:"model_urls"`
 	UploadDir             string      `json:"upload_dir"`
-	SysinfoRefreshSeconds int         `json:"sysinfo_refresh_seconds"` // dashboard poll interval; 0 = default (5s)
+	SysinfoRefreshSeconds int         `json:"sysinfo_refresh_seconds"`
 }
 
-// IsRemote returns true when llama_remote.enabled is set.
-// Remote always wins if enabled; local is the fallback.
 func (c *Config) IsRemote() bool {
 	return c.LlamaRemote.Enabled
 }
 
-// ActiveEndpoint returns the base URL of the active llama-server.
 func (c *Config) ActiveEndpoint() string {
 	if c.IsRemote() {
 		return c.LlamaRemote.Endpoint
@@ -77,19 +76,104 @@ func (c *Config) ActiveEndpoint() string {
 	return c.LlamaLocal.Endpoint
 }
 
+func mergeJSON(golden, user map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// Partiamo dai valori del Golden
+	for k, v := range golden {
+		result[k] = v
+	}
+
+	for k, userVal := range user {
+		// 1. Se il valore utente è nil, saltiamo
+		if userVal == nil {
+			continue
+		}
+
+		// 2. Gestione Ricorsiva per le mappe (LlamaLocal, ModelURLs, etc.)
+		if goldenMap, ok := result[k].(map[string]interface{}); ok {
+			if userMap, ok := userVal.(map[string]interface{}); ok {
+				result[k] = mergeJSON(goldenMap, userMap)
+				continue
+			}
+		}
+
+		// 3. LOGICA DI SOVRASCRITTURA CRITICA
+		switch v := userVal.(type) {
+		case string:
+			if v != "" { // Sovrascrive solo se la stringa non è vuota
+				result[k] = v
+			}
+		case float64:
+			if v != 0 { // Sovrascrive se il numero è diverso da zero
+				result[k] = v
+			}
+		case bool:
+			// Per i boolean dobbiamo sovrascrivere sempre,
+			// altrimenti non potresti mai passare da true a false
+			result[k] = v
+		default:
+			result[k] = v
+		}
+	}
+	return result
+}
+
 func loadConfig(path string) (*Config, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+	var goldenData, userData map[string]interface{}
 
+	// 1. Carica Golden Data se esiste
+	if f, err := os.Open(GoldenConfigFile); err == nil {
+		json.NewDecoder(f).Decode(&goldenData)
+		f.Close()
+	}
+
+	// 2. Carica User Config se esiste
+	configExists := false
+	if f, err := os.Open(path); err == nil {
+		configExists = true
+		json.NewDecoder(f).Decode(&userData)
+		f.Close()
+	}
+
+	var finalData map[string]interface{}
+	shouldUpdateFile := false
+
+	// 3. Logica di Merge
+	if goldenData != nil {
+		if configExists {
+			finalData = mergeJSON(goldenData, userData)
+		} else {
+			finalData = goldenData
+		}
+		shouldUpdateFile = true
+	} else if configExists {
+		finalData = userData
+	} else {
+		return nil, os.ErrNotExist
+	}
+
+	// 4. Decode in Struct
 	cfg := &Config{}
-	if err := json.NewDecoder(f).Decode(cfg); err != nil {
+	tmp, _ := json.Marshal(finalData)
+	if err := json.Unmarshal(tmp, cfg); err != nil {
 		return nil, err
 	}
 
-	// Defaults for local mode
+	// 5. Applica Defaults (Commentato come richiesto)
+	// cfg = applyConfigDefaults(cfg)
+
+	// 6. Salvataggio e rimozione Golden
+	if shouldUpdateFile {
+		if err := cfg.Save(path); err == nil {
+			os.Remove(GoldenConfigFile)
+		}
+	}
+
+	return cfg, nil
+}
+
+func applyConfigDefaults(cfg *Config) *Config {
 	if cfg.LlamaLocal.Endpoint == "" {
 		cfg.LlamaLocal.Endpoint = "http://localhost:11434"
 	}
@@ -100,8 +184,7 @@ func loadConfig(path string) (*Config, error) {
 		cfg.SysinfoRefreshSeconds = 5
 	}
 
-	// Auto-select binary based on current OS
-	if cfg.LlamaLocal.LlamaBin == "" || cfg.LlamaLocal.LlamaBin == "bin/linux/llama-server" {
+	if cfg.LlamaLocal.LlamaBin == "" {
 		switch runtime.GOOS {
 		case "windows":
 			cfg.LlamaLocal.LlamaBin = `bin\windows\llama-server.exe`
@@ -130,10 +213,9 @@ func loadConfig(path string) (*Config, error) {
 		cfg.ModelURLs.MmprojE31B = DefaultMmprojURLe31b
 	}
 
-	return cfg, nil
+	return cfg
 }
 
-// Save writes the current config back to the JSON file.
 func (c *Config) Save(path string) error {
 	f, err := os.Create(path)
 	if err != nil {
@@ -145,7 +227,6 @@ func (c *Config) Save(path string) error {
 	return enc.Encode(c)
 }
 
-// EndpointPort extracts the port from an endpoint URL string.
 func endpointPort(endpoint string) string {
 	u, err := url.Parse(endpoint)
 	if err != nil {
