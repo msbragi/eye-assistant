@@ -1,85 +1,45 @@
-## Go Source Files
+# Eye Assistant Architecture
 
-### main.go — Entry Point & Router
-**Purpose:** bootstraps the application, wires all components, starts HTTP/HTTPS servers.
-- Loads config.json, creates `Sidecar` and `Handlers`, registers all routes
-- UA detection: `/` → `admin.html` (desktop) or `eye.html` (mobile)
-- Prints QR code and LAN URL on startup; generates TLS cert on first run
-- Graceful shutdown on `SIGINT`/`SIGTERM`
+GemmaLink: Eye Assistant is a **Zero-Footprint**, private AI ecosystem designed to bridge a mobile device's camera with a local AI model (Gemma 4) running on a workstation. It eliminates the need for cloud intermediaries or external tunnels, maintaining 100% data sovereignty.
 
-Key functions: `main()`, `getLANIP()`, `getLANIPs()`, `getMobileIP()`, `printQR()`
+## Architectural Pillars
+*   **Privacy-First:** No external data egress. All inference and transport remain within the local subnet.
+*   **Minimalist Deployment:** A single Go binary manages the life cycle of the entire stack.
+*   **Backend Agility:** The system dynamically identifies and scores available hardware backends (Vulkan vs AVX2) to ensure the best performance on consumer hardware.
+*   **Technical Abstraction:** The orchestrator masks the complexity of local LLM management. It handles binary scoring, port allocation, and health monitoring, providing a "consumer-grade" experience for a high-end technical stack.
 
----
+## Technical Stack
+*   **Backend & Orchestrator:** Written in **Go** for high-concurrency process management and minimal memory footprint.
+*   **Inference Engine:** `llama-server` (llama.cpp) running as a sidecar process.
+*   **Model:** **Gemma 4**, specifically leveraged for its multimodal vision-to-text reasoning capabilities.
+*   **Desktop UI:** Wails (Go + Svelte) providing a native OS experience.
+*   **Mobile Lens:** A lightweight JS/HTML5 interface served via the internal Go HTTP server.
 
-### config.go — Configuration
-**Purpose:** defines all config structs and handles persistence to config.json.
-- Structs: `Config`, `LlamaLocal`, `LlamaRemote`, `ModelURLs`
-- Package-level constants for all default model URLs and paths
-- `loadConfig()` reads and parses; `cfg.Save()` writes back atomically
-- `cfg.IsRemote()` / `cfg.ActiveEndpoint()` — routing helpers used by handlers
+## System Components
 
----
+```mermaid
+graph TD
+    subgraph "Mobile Device (The Eye)"
+        A[Mobile Web Lens]
+    end
+    
+    subgraph "Local PC (The Brain)"
+        B[Go Orchestrator / Wails]
+        C[Inference Sidecar: llama-server]
+        D[Gemma 4 GGUF Model]
+    end
 
-### handlers.go — HTTP Handler Layer
-**Purpose:** implements every HTTP endpoint — the single largest file.
+    A <-->|Secure LAN HTTPS| B
+    B <-->|Localhost JSON API| C
+    C <-->|Memory Map| D
 
-| Handler | Responsibility |
-|---|---|
-| `HandleAsk` | Chat + optional image → streams LLM response as SSE |
-| `HandleStatus` | JSON snapshot: sidecar state, model, binary, sysinfo |
-| `HandleLlamaStart/Stop` | Start/stop the sidecar child process |
-| `HandleLlamaReleases` | GitHub API → scored asset list per platform |
-| `HandleLlamaSelect` | Saves chosen tag + real asset URL to config |
-| `HandleDownload` | SSE-streamed download; extracts archives; cleans old libs |
-| `HandleModelSelect` / `HandleVisionToggle` | Update and persist model config |
-| `HandleConfig` | GET/POST the runtime configuration |
-| `HandleCertRegenerate` | Regenerates the self-signed TLS cert |
-| `HandleLlamaTest` | Sends a minimal prompt, returns latency |
-| `HandleQR` / `HandleQRURL` | Serves QR code PNG / JSON URL |
+```
 
-Internal helpers: `extractLlamaBinary()`, `extractFromTarGzAll()`, `extractFromZipAll()`, `cleanBinDir()`, `llamaBinaryURLForTag()`
+## Data Flow & Security
 
----
-
-### llm.go — LLM Client
-**Purpose:** encapsulates all communication with llama-server's OpenAI-compatible API.
-- `Chat()` builds a `/v1/chat/completions` streaming request, supports text-only and multimodal (text + base64 image)
-- Parses SSE chunks, calls a token callback for each delta
-- `loadImageAsBase64()` encodes an uploaded file for multimodal payloads
-
-Key types: `LLMClient`, `ChatMessage`, `ContentPart`, `ChatRequest`, `StreamChunk`
-
----
-
-### sidecar.go — llama-server Process Manager
-**Purpose:** manages the `llama-server` child process lifecycle.
-- `Start()` — finds a free port, validates binary/model, builds CLI args (including `--mmproj` for vision), sets `LD_LIBRARY_PATH`, spawns process
-- `Stop()` — graceful termination
-- `IsRunning()` — liveness check
-- `WaitReady()` — polls health endpoint until ready or timeout
-
----
-
-### cert.go — TLS Certificate Generator
-**Purpose:** generates a self-signed RSA-2048 certificate at first run — no `openssl` dependency.
-- `GenerateSelfSignedCert()` — RSA-2048 key + X.509 cert with SANs, writes to .ssl
-- `DefaultCertSANs()` — collects all LAN IPs + hostnames for a LAN-valid certificate
-
----
-
-### sysinfo.go — System Resource Monitor
-**Purpose:** cross-platform hardware snapshot using `gopsutil`.
-- Collects RAM, CPU (1-second sample), disk usage
-- GPU stats via `nvidia-smi` — best-effort, silently skipped if unavailable
-
----
-
-### static_dev.go / static_prod.go — Static File Serving
-**Purpose:** build-tag pair providing two implementations of `staticHandler()`.
-- **`dev` tag:** serves static from disk — live edits without rebuild
-- **default (prod):** embeds static into the binary via `//go:embed` — fully self-contained release
-
----
+1. **Secure Context:** The Go backend generates a self-signed TLS certificate to satisfy browser requirements for `getUserMedia` (camera access) without external CA validation.
+2. **Inference Pipeline:** Frames are captured by the "Lens", transmitted over the LAN via HTTPS, and fed directly into the sidecar's JSON API.
+3. **Process Management:** The orchestrator monitors the sidecar's health and manages the MMAP'd model memory to prevent leaks and ensure a clean exit.
 
 ## Diagrams
 
