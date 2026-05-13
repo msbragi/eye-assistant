@@ -39,8 +39,19 @@ LDFLAGS="-X main.Version=${VERSION}"
 mkdir -p "$RELEASES"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
+write_config() {
+  local TARGET_OS="$1"
+  local LLAMA_BIN
 
-write_config_linux() {
+  if [[ "$TARGET_OS" == "win" ]]; then
+    # Usiamo il doppio backslash per il JSON
+    LLAMA_BIN="bin\\\\windows\\\\llama-server.exe"
+  else
+    LLAMA_BIN="bin/linux/llama-server"
+  fi
+
+  echo "▶ Generating config.gl for $TARGET_OS..."
+
   cat > "$STAGING/config.gl" <<EOF
 {
   "sysinfo_refresh_seconds": 5,
@@ -53,39 +64,7 @@ write_config_linux() {
     "model_path": "models/gemma-4-e2b.gguf",
     "mmproj_path": "models/mmproj-gemma-4-e2b.gguf",
     "vision_enabled": false,
-    "llama_bin": "bin/linux/llama-server",
-    "llama_bin_version": "",
-    "context_size": 4096
-  },
-  "llama_remote": {
-    "enabled": false,
-    "endpoint": ""
-  },
-  "model_urls": {
-    "e2b": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
-    "e4b": "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf",
-    "mmproj_e2b": "",
-    "mmproj_e4b": ""
-  },
-  "upload_dir": "uploads"
-}
-EOF
-}
-
-write_config_windows() {
-  cat > "$STAGING/config.gl" <<'EOF'
-{
-  "sysinfo_refresh_seconds": 5,
-  "http_host": "localhost",
-  "http_port": "9380",
-  "https_port": "9381",
-  "llama_local": {
-    "enabled": false,
-    "endpoint": "http://localhost:9382",
-    "model_path": "models/gemma-4-e2b.gguf",
-    "mmproj_path": "models/mmproj-gemma-4-e2b.gguf",
-    "vision_enabled": false,
-    "llama_bin": "bin\\windows\\llama-server.exe",
+    "llama_bin": "$LLAMA_BIN",
     "llama_bin_version": "",
     "context_size": 4096
   },
@@ -123,7 +102,7 @@ build_linux() {
     -o "$STAGING/gemmalink" \
     "$ROOT"
 
-  write_config_linux
+  write_config "linux"
   [[ -f "$ROOT/README.md" ]] && cp "$ROOT/README.md" "$STAGING/README.md"
 
   local ARCHIVE="$RELEASES/gemmalink-${VERSION}-linux-amd64.tar.gz"
@@ -142,7 +121,7 @@ build_windows() {
     -o "$STAGING/gemmalink.exe" \
     "$ROOT"
 
-  write_config_windows
+  write_config "win"
   [[ -f "$ROOT/README.md" ]] && cp "$ROOT/README.md" "$STAGING/README.md"
 
   local ARCHIVE="$RELEASES/gemmalink-${VERSION}-windows-amd64.zip"
@@ -151,7 +130,6 @@ build_windows() {
   rm -f "$ARCHIVE"
 
   (cd "$STAGING" && zip -rq "$ARCHIVE" .)
-  cleanup_staging
   echo "   ✓ $ARCHIVE"
 }
 
