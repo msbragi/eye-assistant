@@ -19,13 +19,28 @@ import (
 )
 
 type Handlers struct {
-	cfg     *Config
-	sidecar *Sidecar
-	llm     *LLMClient
+	cfg        *Config
+	sidecar    *Sidecar
+	llm        *LLMClient
+	qrCacheURL string
+	qrCachePNG []byte
 }
 
 func NewHandlers(cfg *Config, sidecar *Sidecar) *Handlers {
-	return &Handlers{cfg: cfg, sidecar: sidecar}
+	h := &Handlers{cfg: cfg, sidecar: sidecar}
+	h.qrRefresh()
+	return h
+}
+
+// qrRefresh regenerates the QR PNG and caches it. Safe to call anytime.
+func (h *Handlers) qrRefresh() {
+	url := fmt.Sprintf("https://%s:%s/eye.html", getMobileIP(), h.cfg.HTTPSPort)
+	png, err := qrcode.Encode(url, qrcode.Medium, 256)
+	if err != nil {
+		return
+	}
+	h.qrCacheURL = url
+	h.qrCachePNG = png
 }
 
 // refreshLLM rebuilds the LLMClient when needed.
@@ -890,14 +905,16 @@ func extractFromZipAll(archivePath, binName, destDir, destPath string) ([]string
 // -----------------------------------------------------------------
 func (h *Handlers) HandleQR(w http.ResponseWriter, r *http.Request) {
 	mobileURL := fmt.Sprintf("https://%s:%s/eye.html", getMobileIP(), h.cfg.HTTPSPort)
-	png, err := qrcode.Encode(mobileURL, qrcode.Medium, 256)
-	if err != nil {
+	if h.qrCacheURL != mobileURL || h.qrCachePNG == nil {
+		h.qrRefresh()
+	}
+	if h.qrCachePNG == nil {
 		http.Error(w, "QR generation failed", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Write(png) //nolint:errcheck
+	w.Write(h.qrCachePNG) //nolint:errcheck
 }
 
 func (h *Handlers) HandleQRURL(w http.ResponseWriter, r *http.Request) {
@@ -1026,6 +1043,8 @@ func (h *Handlers) HandleConfig(w http.ResponseWriter, r *http.Request) {
 
 		// Reset LLM client so next /ask rebuilds with new endpoint
 		h.llm = nil
+		// Invalidate QR cache — HTTPS port or host may have changed
+		h.qrCacheURL = ""
 
 		if err := h.cfg.Save(ConfigFile); err != nil {
 			http.Error(w, "failed to save config: "+err.Error(), http.StatusInternalServerError)

@@ -52,7 +52,8 @@
 
       <!-- System Resources -->
       <div class="card">
-        <h2>System Resources <span class="sysynfo-refresh-text">refresh every <input id="sysinfo-refresh" type="number" min="1" max="60" value="5"> sec.</span></h2>
+        <h2>System Resources <span class="sysynfo-refresh-text">refresh every <input id="sysinfo-refresh" type="number"
+              min="1" max="60" value="5"> sec.</span></h2>
         <div class="resource-row">
           <div class="resource-label"><span>RAM</span><span id="ram-label">—</span></div>
           <div class="bar-track">
@@ -108,23 +109,24 @@
       <!-- llama-server Binary — local mode only -->
       <div class="card" id="card-binary">
         <h2>llama-server Binary</h2>
-        <div style="margin-bottom:10px">
-          <select id="llama-selector" class="form-input">
+        <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
+          <select id="llama-selector" class="form-input" style="flex:1">
             <option value="">Loading releases…</option>
           </select>
-        </div>
-        <div class="status-item">
-          <div class="dot unknown" id="dot-bin"></div>
-          <span class="status-label" id="label-bin">Binary file</span>
-          <span class="status-value" id="val-bin">—</span>
+          <button class="btn btn-secondary" id="btn-refresh-llama" title="Refresh releases">↻</button>
         </div>
         <div class="actions-row" id="llama-actions" style="flex-wrap:wrap;gap:8px">
-          <button class="btn btn-primary" id="btn-dl-llama" style="display:none">⬇ Download</button>
+          <button class="btn btn-primary" id="btn-dl-llama" style="display:none">Download This Release</button>
           <button class="btn btn-secondary" id="btn-cancel-dl-llama" style="display:none">✕ Cancel</button>
-          <!-- Maybe we actvate later -->
+          <!-- Maybe we activate later -->
           <span style="display: none;">
             <button class="btn btn-primary" id="btn-use-llama" style="display:none">✓ Use this version</button>
           </span>
+        </div>
+        <div class="status-item">
+          <div class="dot unknown" id="dot-bin"></div>
+          <span class="status-label" id="label-bin">Current Release</span>
+          <span class="status-value" id="val-bin">—</span>
         </div>
         <div id="llama-active-badge" style="display:none;font-size:0.8rem;color:#44ff88;margin-top:6px"></div>
         <div class="progress-wrap" id="prog-llama-wrap">

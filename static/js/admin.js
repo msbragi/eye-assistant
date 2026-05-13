@@ -1,640 +1,746 @@
-// GemmaLink Admin Dashboard — JS
-// ─────────────────────────────────────────────────────────────────
+/**
+ * GemmaLink Admin — Definitive Refactoring
+ * Architecture: State-Action-Renderer (SAR)
+ */
 
-// ─── Model URL defaults ────────────────────────────────────────
-const DEFAULT_MODEL_URLS = {
-  e2b:        'https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf',
-  e4b:        'https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf',
-  //e31b:       'https://huggingface.co/lmstudio-community/gemma-4-E31B-it-GGUF/resolve/main/gemma-4-E31B-it-Q4_K_M.gguf',
-  mmproj_e2b: 'https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-BF16.gguf',
-  mmproj_e4b: 'https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/mmproj-gemma-4-E4B-it-BF16.gguf',
-  //mmproj_e31b:'https://huggingface.co/lmstudio-community/gemma-4-E31B-it-GGUF/resolve/main/mmproj-gemma-4-E31B-it-BF16.gguf',
+// --- 1. CONFIG & STATE ---
+const DEFAULT_URLS = {
+    e2b: 'https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf',
+    e4b: 'https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf'
 };
 
-// ─── Tab switching ─────────────────────────────────────────────
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-  });
-});
-
-// ─── Logging ───────────────────────────────────────────────────
-function log(msg, type = '') {
-  const box = document.getElementById('log-box');
-  const line = document.createElement('div');
-  if (type) line.className = 'log-' + type;
-  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-  box.appendChild(line);
-  box.scrollTop = box.scrollHeight;
-}
-
-function setBar(id, pct) {
-  const el = document.getElementById(id);
-  el.style.width = pct + '%';
-  el.className = 'bar-fill' + (pct > 89 ? ' crit' : pct > 69 ? ' warn' : '');
-}
-function setDot(id, state) { document.getElementById(id).className = 'dot ' + state; }
-function fmtGB(b) { return (b / 1073741824).toFixed(1) + ' GB'; }
-
-// ─── Remote mode UI ────────────────────────────────────────────
-let remoteMode = false;
-function applyRemoteMode(remote) {
-  remoteMode = remote;
-  document.getElementById('card-binary').style.display = remote ? 'none' : '';
-  document.getElementById('card-model').style.display = remote ? 'none' : '';
-  document.getElementById('row-stop').style.display = remote ? 'none' : '';
-  document.getElementById('remote-notice').style.display = remote ? 'block' : 'none';
-  document.getElementById('section-model-urls').style.display = remote ? 'none' : '';
-}
-
-// ─── Poll /api/sysinfo ─────────────────────────────────────────
-let lastSysInfo = null;
-async function pollSysinfo() {
-  try {
-    const d = await fetch('/api/sysinfo').then(r => r.json());
-    lastSysInfo = d;
-    const ramPct = Math.round(d.ram_used / d.ram_total * 100);
-    const diskPct = Math.round(d.disk_used / d.disk_total * 100);
-    document.getElementById('ram-label').textContent = `${fmtGB(d.ram_used)} / ${fmtGB(d.ram_total)} (${ramPct}%)`;
-    document.getElementById('cpu-label').textContent = `${d.cpu_pct.toFixed(1)}%`;
-    document.getElementById('disk-label').textContent = `${fmtGB(d.disk_used)} / ${fmtGB(d.disk_total)} (${diskPct}%)`;
-    setBar('ram-bar', ramPct);
-    setBar('cpu-bar', Math.round(d.cpu_pct));
-    setBar('disk-bar', diskPct);
-    const gpuEl = document.getElementById('gpu-info');
-    if (d.gpu_name) {
-      gpuEl.textContent = `GPU: ${d.gpu_name} — VRAM ${fmtGB(d.gpu_vram_used)} / ${fmtGB(d.gpu_vram_total)}`;
-      gpuEl.style.color = '#aaa';
-    } else {
-      gpuEl.textContent = 'GPU: not detected (CPU inference mode)';
-    }
-  } catch (e) { log('sysinfo error: ' + e.message, 'err'); }
-}
-
-// ─── Poll /api/status ──────────────────────────────────────────
-async function pollStatus() {
-  try {
-    const d = await fetch('/api/status').then(r => r.json());
-    setDot('dot-server', 'ok');
-    document.getElementById('val-server').textContent = 'running';
-
-    // Update remoteMode flag only — don't touch config UI visibility
-    // (that is controlled by the radio buttons and loadConfig)
-    remoteMode = d.remote_mode === true;
-
-    if (d.ready) {
-      setDot('dot-llama', 'ok');
-      document.getElementById('val-llama').textContent = d.llama_addr || ('port ' + d.llama_port);
-      document.getElementById('btn-start-llama').style.display = 'none';
-      document.getElementById('btn-stop-llama').style.display  = '';
-    } else {
-      setDot('dot-llama', 'missing');
-      document.getElementById('val-llama').textContent = 'not running';
-      document.getElementById('btn-start-llama').style.display = remoteMode ? 'none' : '';
-      document.getElementById('btn-stop-llama').style.display  = 'none';
-    }
-
-    if (!remoteMode) {
-      if (d.bin_present) {
-        setDot('dot-bin', 'ok');
-        document.getElementById('label-bin').textContent = 'Binary found';
-        document.getElementById('val-bin').textContent = d.bin_path;
-      } else {
-        setDot('dot-bin', 'missing');
-        document.getElementById('label-bin').textContent = 'Binary missing';
-        document.getElementById('val-bin').textContent = d.bin_path;
-      }
-      updateLlamaSelectorUI(d.bin_present, d.bin_version);
-    }
-    if (d.model_present) {
-      setDot('dot-model', 'ok');
-      document.getElementById('val-model').textContent = remoteMode ? d.model_path : fmtGB(d.model_size);
-    } else {
-      setDot('dot-model', 'missing');
-      document.getElementById('val-model').textContent = 'missing';
-    }
-
-    // Update per-model selector UI
-    if (d.models_present) {
-      lastModelsPresent = d.models_present;
-      updateModelSelectorUI(d.models_present, d.model_path, d.vision_enabled);
-    }
-  } catch (e) {
-    setDot('dot-server', 'missing');
-    log('status error: ' + e.message, 'err');
-  }
-}
-
-// ─── llama-server release selector ────────────────────────────
-let llamaReleases = []; // [{tag, name, url}]
-let llamaDownloadController = null;
-
-async function loadLlamaReleases() {
-  const sel = document.getElementById('llama-selector');
-  try {
-    llamaReleases = await fetch('/api/llama/releases').then(r => r.json());
-    sel.innerHTML = '';
-    if (!llamaReleases || llamaReleases.length === 0) {
-      sel.innerHTML = '<option value="">No releases found</option>';
-      return;
-    }
-    for (const r of llamaReleases) {
-      const opt = document.createElement('option');
-      opt.value = r.tag;
-      const label = `${r.tag} — ${r.name}`;
-      opt.dataset.label = label;
-      opt.textContent = label;
-      sel.appendChild(opt);
-    }
-    log(`Loaded ${llamaReleases.length} llama.cpp releases`, 'ok');
-  } catch (e) {
-    sel.innerHTML = '<option value="">GitHub unreachable</option>';
-    log('Could not load llama releases: ' + e.message, 'warn');
-  }
-}
-
-function updateLlamaSelectorUI(binPresent, activeTag) {
-  const sel = document.getElementById('llama-selector');
-
-  // Add ✓ checkmark to the option matching the active (downloaded) tag
-  for (const opt of sel.options) {
-    const lbl = opt.dataset.label || opt.textContent.replace(/^✓ /, '');
-    opt.dataset.label = lbl;
-    opt.textContent = (binPresent && opt.value === activeTag) ? '✓ ' + lbl : lbl;
-  }
-
-  const selectedTag = sel.value;
-  const downloading = llamaDownloadController !== null;
-
-  const isActive = binPresent && selectedTag === activeTag;
-  const isPresent = binPresent;
-
-  document.getElementById('dot-bin').className = 'dot ' + (isPresent ? 'ok' : 'missing');
-  document.getElementById('val-bin').textContent = isPresent
-    ? (activeTag ? `v${activeTag}` : 'present')
-    : 'not downloaded';
-
-  document.getElementById('btn-dl-llama').style.display       = (!downloading) ? '' : 'none';
-  document.getElementById('btn-cancel-dl-llama').style.display = downloading ? '' : 'none';
-  document.getElementById('btn-use-llama').style.display       = (isPresent && !isActive && !downloading) ? '' : 'none';
-
-  const badge = document.getElementById('llama-active-badge');
-  badge.style.display = isActive ? '' : 'none';
-  badge.textContent   = isActive ? `✓ Active — ${activeTag}` : '';
-}
-
-document.getElementById('llama-selector').addEventListener('change', pollStatus);
-
-document.getElementById('btn-dl-llama').addEventListener('click', async () => {
-  const tag = document.getElementById('llama-selector').value;
-  if (!tag) return;
-  const controller = new AbortController();
-  llamaDownloadController = controller;
-  pollStatus();
-
-  const fill  = document.getElementById('prog-llama-fill');
-  const label = document.getElementById('prog-llama-label');
-  const wrap  = document.getElementById('prog-llama-wrap');
-  wrap.classList.add('visible'); fill.style.width = '0%'; fill.style.background = '';
-
-  // Tell server which tag (and real asset URL) to download before starting
-  const releaseEntry = llamaReleases.find(r => r.tag === tag);
-  const assetURL = releaseEntry ? releaseEntry.url : '';
-  await fetch(`/api/llama/select?tag=${encodeURIComponent(tag)}&url=${encodeURIComponent(assetURL)}`, { method: 'POST' });
-  log(`Downloading llama-server ${tag}…`, 'ok');
-
-  const ok = await streamDownload('/api/download?target=llama', fill, label, controller.signal);
-  llamaDownloadController = null;
-  if (ok) {
-    log(`llama-server ${tag} downloaded.`, 'ok');
-  }
-  pollStatus();
-});
-
-document.getElementById('btn-cancel-dl-llama').addEventListener('click', () => {
-  if (llamaDownloadController) {
-    llamaDownloadController.abort();
-    llamaDownloadController = null;
-    log('llama-server download cancelled', 'warn');
-    document.getElementById('prog-llama-wrap').classList.remove('visible');
-    pollStatus();
-  }
-});
-
-document.getElementById('btn-use-llama').addEventListener('click', async () => {
-  const tag = document.getElementById('llama-selector').value;
-  if (!tag) return;
-  try {
-    const releaseEntry = llamaReleases.find(r => r.tag === tag);
-    const assetURL = releaseEntry ? releaseEntry.url : '';
-    const d = await fetch(`/api/llama/select?tag=${encodeURIComponent(tag)}&url=${encodeURIComponent(assetURL)}`, { method: 'POST' }).then(r => r.json());
-    if (d.ok) { log(`llama-server active version set to ${tag}`, 'ok'); pollStatus(); }
-  } catch (e) { log('Select failed: ' + e.message, 'err'); }
-});
-
-// ─── Model selector ────────────────────────────────────────────
-const MODEL_PATHS = {
-  e2b:  { model: 'models/gemma-4-e2b.gguf',   mmproj: 'models/mmproj-gemma-4-e2b.gguf' },
-  e4b:  { model: 'models/gemma-4-e4b.gguf',   mmproj: 'models/mmproj-gemma-4-e4b.gguf' },
-  e31b: { model: 'models/gemma-4-e31b.gguf',  mmproj: 'models/mmproj-gemma-4-e31b.gguf' },
-};
 const MODEL_LABELS = {
-  e2b:  'Gemma 4 E2B (2B params)',
-  e4b:  'Gemma 4 E4B (4B params)',
-  e31b: 'Gemma 4 E31B (31B params)',
+    e2b:  'Gemma 4 E2B (2B params)',
+    e4b:  'Gemma 4 E4B (4B params)',
+    e31b: 'Gemma 4 E31B (31B params)',
 };
-// Minimum total RAM (bytes) required for each model variant (Q4_K_M + context overhead).
+
 const MODEL_MIN_RAM = {
-  e2b:  4  * 1073741824,  //  4 GB
-  e4b:  6  * 1073741824,  //  6 GB
-  e31b: 24 * 1073741824,  // 24 GB
+    e2b:   4 * 1073741824,   //  4 GB
+    e4b:   6 * 1073741824,   //  6 GB
+    e31b: 24 * 1073741824,   // 24 GB
 };
 
-let activeDownloadController = null;  // AbortController for model download cancellation
-let mmprojDownloadController = null;  // AbortController for mmproj download (vision toggle)
-let lastModelsPresent = null;          // cached models_present from last status poll
+const Store = {
+    sys: { data: {}, dirty: false },
+    server: { data: {}, dirty: false },
+    config: { data: {}, dirty: false },
+    qr: { data: { url: '', img: '' }, dirty: false },
+    model: { data: { variants: {}, activePath: '', vision: false }, dirty: false },
+    log: { data: [], dirty: false },
+    dl: { data: { pct: 0, label: '', visible: false, type: 'model' }, dirty: false },
+    bin: { data: { releases: [] }, dirty: false }
+};
 
-function updateModelSelectorUI(modelsPresent, activeModelPath, visionEnabled) {
-  const sel = document.getElementById('model-selector');
+let pollSysInterval = null;
 
-  // Determine effective memory: prefer GPU VRAM if available, otherwise total RAM.
-  const effectiveMem = (lastSysInfo && lastSysInfo.gpu_vram_total > 0)
-    ? Math.max(lastSysInfo.ram_total, lastSysInfo.gpu_vram_total)
-    : (lastSysInfo ? lastSysInfo.ram_total : Infinity);
+// --- 2. UI CACHE ---
+// Keys mirror Store keys so Store.X <-> UI.X
+const UI = {
+    // ── Store.qr ──────────────────────────────────────────
+    qr: {
+        img: document.getElementById('qr-img'),
+        url: document.getElementById('qr-url'),
+    },
 
-  // Show only variants whose memory requirement is met; keep current selection if still valid.
-  const currentVal = sel.value;
-  sel.innerHTML = '';
-  for (const [v, label] of Object.entries(MODEL_LABELS)) {
-    if (effectiveMem < MODEL_MIN_RAM[v]) continue;  // not enough memory — skip
-    const opt = document.createElement('option');
-    opt.value = v;
-    const ok = !!(modelsPresent[v] || {}).model;
-    opt.dataset.label = label;
-    opt.textContent = (ok ? '✓ ' : '') + label;
-    if (v === currentVal) opt.selected = true;
-    sel.appendChild(opt);
-  }
-  // If previous selection was removed, fall back to first available.
-  if (!sel.value && sel.options.length > 0) sel.options[0].selected = true;
+    // ── Store.sys ─────────────────────────────────────────
+    sys: {
+        ramBar:       document.getElementById('ram-bar'),
+        ramVal:       document.getElementById('ram-label'),
+        cpuBar:       document.getElementById('cpu-bar'),
+        cpuVal:       document.getElementById('cpu-label'),
+        diskBar:      document.getElementById('disk-bar'),
+        diskVal:      document.getElementById('disk-label'),
+        gpuInfo:      document.getElementById('gpu-info'),
+        refreshInput: document.getElementById('sysinfo-refresh'),
+    },
 
-  const variant = sel.value;
-  const p = modelsPresent[variant] || {};
-  const modelOk = !!p.model;
-  const paths = MODEL_PATHS[variant];
+    // ── Store.server ──────────────────────────────────────
+    server: {
+        dotServer:    document.getElementById('dot-server'),
+        valServer:    document.getElementById('val-server'),
+        dotLlama:     document.getElementById('dot-llama'),
+        valLlama:     document.getElementById('val-llama'),
+        dotModel:     document.getElementById('dot-model'),
+        valModel:     document.getElementById('val-model'),
+        rowStop:      document.getElementById('row-stop'),
+        btnStart:     document.getElementById('btn-start-llama'),
+        btnStop:      document.getElementById('btn-stop-llama'),
+        remoteNotice: document.getElementById('remote-notice'),
+    },
 
-  const downloading = activeDownloadController !== null;
-  document.getElementById('btn-dl-model').style.display  = (!modelOk && !downloading) ? '' : 'none';
-  document.getElementById('btn-cancel-dl').style.display = downloading ? '' : 'none';
-  document.getElementById('btn-use-model').style.display = (modelOk && !downloading) ? '' : 'none';
+    // ── Store.bin ─────────────────────────────────────────
+    bin: {
+        card:        document.getElementById('card-binary'),
+        selector:    document.getElementById('llama-selector'),
+        btnRefresh:  document.getElementById('btn-refresh-llama'),
+        dotBin:      document.getElementById('dot-bin'),
+        labelBin:    document.getElementById('label-bin'),
+        valBin:      document.getElementById('val-bin'),
+        activeBadge: document.getElementById('llama-active-badge'),
+        btnDl:       document.getElementById('btn-dl-llama'),
+        btnCancel:   document.getElementById('btn-cancel-dl-llama'),
+        btnUse:      document.getElementById('btn-use-llama'),
+        progWrap:    document.getElementById('prog-llama-wrap'),
+        progFill:    document.getElementById('prog-llama-fill'),
+        progLabel:   document.getElementById('prog-llama-label'),
+    },
 
-  // Active badge
-  const badge = document.getElementById('model-active-badge');
-  const isActive = activeModelPath === paths.model;
-  badge.style.display = (modelOk && isActive) ? '' : 'none';
-  badge.textContent = isActive ? '✓ Active model' : '';
+    // ── Store.model ───────────────────────────────────────
+    model: {
+        card:         document.getElementById('card-model'),
+        selector:     document.getElementById('model-selector'),
+        visionToggle: document.getElementById('vision-toggle'),
+        activeBadge:  document.getElementById('model-active-badge'),
+        btnDl:        document.getElementById('btn-dl-model'),
+        btnCancel:    document.getElementById('btn-cancel-dl'),
+        btnUse:       document.getElementById('btn-use-model'),
+        progWrap:     document.getElementById('prog-model-wrap'),
+        progFill:     document.getElementById('prog-model-fill'),
+        progLabel:    document.getElementById('prog-model-label'),
+    },
 
-  // Vision toggle
-  document.getElementById('vision-toggle').checked = !!visionEnabled;
+    // ── Store.log ─────────────────────────────────────────
+    log: {
+        box: document.getElementById('log-box'),
+    },
+
+    // ── Store.config — GemmaLink Server ───────────────────
+    config: {
+        httpHost:        document.getElementById('cfg-http-host'),
+        httpPort:        document.getElementById('cfg-http-port'),
+        httpsPort:       document.getElementById('cfg-https-port'),
+        uploadDir:       document.getElementById('cfg-upload-dir'),
+        restartWarn:     document.getElementById('cfg-restart-warn'),
+        // Inference mode
+        radioLocal:      document.getElementById('radio-local'),
+        radioRemote:     document.getElementById('radio-remote'),
+        lblLocal:        document.getElementById('lbl-local'),
+        lblRemote:       document.getElementById('lbl-remote'),
+        panelLocal:      document.getElementById('panel-local'),
+        panelRemote:     document.getElementById('panel-remote'),
+        localEndpoint:   document.getElementById('cfg-local-endpoint'),
+        btnTestLocal:    document.getElementById('btn-test-local'),
+        connStatusLocal: document.getElementById('conn-status-local'),
+        llamaBin:        document.getElementById('cfg-llama-bin'),
+        llamaBinVersion: document.getElementById('cfg-llama-bin-version'),
+        modelPath:       document.getElementById('cfg-model-path'),
+        mmprojPath:      document.getElementById('cfg-mmproj-path'),
+        contextSize:     document.getElementById('cfg-context-size'),
+        remoteEndpoint:      document.getElementById('cfg-remote-endpoint'),
+        btnTestRemote:       document.getElementById('btn-test-remote'),
+        connStatusRemote:    document.getElementById('conn-status-remote'),
+        // Download URLs
+        sectionModelUrls: document.getElementById('section-model-urls'),
+        urlE2b:           document.getElementById('cfg-url-e2b'),
+        btnResetE2b:      document.getElementById('btn-reset-e2b'),
+        urlE4b:           document.getElementById('cfg-url-e4b'),
+        btnResetE4b:      document.getElementById('btn-reset-e4b'),
+        // Save / SSL
+        btnSave:    document.getElementById('btn-save-cfg'),
+        cfgStatus:  document.getElementById('cfg-status'),
+        btnRegen:   document.getElementById('btn-regen-cert'),
+        certStatus: document.getElementById('cert-status'),
+    },
+
+    // ── Tab panels (not Store-backed, UI-only) ────────────
+    tabs: {
+        qr:        document.getElementById('tab-qr'),
+        dashboard: document.getElementById('tab-dashboard'),
+        config:    document.getElementById('tab-config'),
+        btns:      document.querySelectorAll('.tab-btn'),
+    },
+};
+
+// --- 3. RENDERERS ---
+function setBar(el, pct) {
+    el.style.width = `${pct}%`;
+    el.className = 'bar-fill' + (pct > 89 ? ' crit' : pct > 69 ? ' warn' : '');
 }
 
-document.getElementById('model-selector').addEventListener('change', pollStatus);
+const Renderer = {
+    sys: (d) => {
+        const rPct = Math.round(d.ram_used / d.ram_total * 100);
+        setBar(UI.sys.ramBar, rPct);
+        UI.sys.ramVal.textContent = `${fmtGB(d.ram_used)} / ${fmtGB(d.ram_total)} (${rPct}%)`;
+        const cPct = Math.round(d.cpu_pct);
+        setBar(UI.sys.cpuBar, cPct);
+        UI.sys.cpuVal.textContent = `${d.cpu_pct.toFixed(1)}%`;
+        const dPct = Math.round(d.disk_used / d.disk_total * 100);
+        setBar(UI.sys.diskBar, dPct);
+        UI.sys.diskVal.textContent = `${fmtGB(d.disk_used)} / ${fmtGB(d.disk_total)} (${dPct}%)`;
+        UI.sys.gpuInfo.textContent = d.gpu_name ? `GPU: ${d.gpu_name} — VRAM ${fmtGB(d.gpu_vram_used)} / ${fmtGB(d.gpu_vram_total)}` : 'GPU: none detected';
+    },
 
-document.getElementById('btn-dl-model').addEventListener('click', async () => {
-  const variant = document.getElementById('model-selector').value;
-  await downloadModel(variant);
-});
+    server: (d) => {
+        UI.server.dotServer.className = 'dot ok';
+        UI.server.valServer.textContent = 'running';
+        UI.server.dotLlama.className = `dot ${d.ready ? 'ok' : 'missing'}`;
+        UI.server.valLlama.textContent = d.ready ? (d.llama_addr || `port ${d.llama_port}`) : 'not running';
+        const activePath = Store.model.data.activePath || '';
+        const activeVariant = Object.keys(MODEL_LABELS).find(k => activePath.includes(k));
+        const modelLabel = activeVariant ? MODEL_LABELS[activeVariant] : (activePath ? activePath.split('/').pop() : 'none');
+        UI.server.dotModel.className = `dot ${activePath ? 'ok' : 'missing'}`;
+        UI.server.valModel.textContent = modelLabel;
 
-document.getElementById('btn-cancel-dl').addEventListener('click', () => {
-  if (activeDownloadController) {
-    activeDownloadController.abort();
-    activeDownloadController = null;
-    log('Download cancelled', 'warn');
-    document.getElementById('prog-model-wrap').classList.remove('visible');
-    pollStatus();
-  }
-});
+        const isRemote = d.remote_mode === true;
+        UI.server.btnStart.style.display     = (!d.ready && !isRemote) ? '' : 'none';
+        UI.server.btnStop.style.display      = (d.ready && !isRemote)  ? '' : 'none';
+        UI.server.rowStop.style.display      = isRemote ? 'none' : '';
+        UI.server.remoteNotice.style.display = isRemote ? '' : 'none';
 
-document.getElementById('btn-use-model').addEventListener('click', async () => {
-  const variant = document.getElementById('model-selector').value;
-  try {
-    const d = await fetch(`/api/model/select?variant=${variant}`, { method: 'POST' }).then(r => r.json());
-    if (d.ok) {
-      log(`Model set to ${variant.toUpperCase()}: ${d.model_path}`, 'ok');
-      pollStatus();
+        // Local-only cards
+        UI.bin.card.style.display            = isRemote ? 'none' : '';
+        UI.model.card.style.display          = isRemote ? 'none' : '';
+        UI.config.sectionModelUrls.style.display = isRemote ? 'none' : '';
+
+        // Binary status (only meaningful in local mode)
+        UI.bin.dotBin.className   = `dot ${d.bin_present ? 'ok' : 'missing'}`;
+        UI.bin.valBin.textContent = d.bin_present ? `llama-${d.bin_version}` : 'not found';
+        UI.bin.labelBin.textContent = d.bin_present ? 'Current Release' : 'Binary missing';
+    },
+
+    config: (d) => {
+        // GemmaLink Server
+        UI.config.httpHost.value  = d.http_host || '';
+        UI.config.httpPort.value  = d.http_port || '';
+        UI.config.httpsPort.value = d.https_port || '';
+        UI.config.uploadDir.value = d.upload_dir || '';
+        UI.sys.refreshInput.value = d.sysinfo_refresh_seconds || 5;
+
+        // Llama mode
+        const loc = d.llama_local ?? {};
+        const rem = d.llama_remote ?? {};
+        setLlamaMode(rem.enabled ? 'remote' : 'local');
+
+        // Llama Local
+        UI.config.localEndpoint.value   = loc.endpoint || '';
+        UI.config.llamaBin.value        = loc.bin_path || loc.llama_bin || '';
+        UI.config.llamaBinVersion.value = loc.llama_bin_version || '';
+        UI.config.modelPath.value       = loc.model_path || '';
+        UI.config.mmprojPath.value      = loc.mmproj_path || '';
+        UI.config.contextSize.value     = loc.ctx_size || loc.context_size || 2048;
+
+        // Llama Remote
+        UI.config.remoteEndpoint.value = rem.endpoint || '';
+
+        // Download URLs
+        const urls = d.download_urls ?? d.model_urls ?? {};
+        UI.config.urlE2b.value = urls.e2b || DEFAULT_URLS.e2b;
+        UI.config.urlE4b.value = urls.e4b || DEFAULT_URLS.e4b;
+
+        // Applica il refresh sysinfo basato sulla config caricata
+        Actions.applySysinfoRefresh(d.sysinfo_refresh_seconds || 5);
+    },
+
+    bin: (d) => {
+        const current = Store.server.data.bin_version || '';
+        if (d.releases.length > 0) {
+            UI.bin.selector.innerHTML = d.releases.map(r => {
+                const isCurrent = current && r.tag === current;
+                const label = (isCurrent ? '\u2713 ' : '') + r.name + ' (' + r.tag + ')';
+                return `<option value="${r.tag}"${isCurrent ? ' selected' : ''}>${label}</option>`;
+            }).join('');
+            UI.bin.btnDl.style.display = '';
+        } else {
+            UI.bin.selector.innerHTML = '<option value="">No releases available</option>';
+            UI.bin.btnDl.style.display = 'none';
+        }
+    },
+
+    model: (d) => {
+        // RAM/VRAM-aware selector: show only variants the machine can run.
+        // Prefer GPU VRAM if available, otherwise total RAM.
+        const sys = Store.sys.data;
+        const effectiveMem = (sys.gpu_vram_total > 0)
+            ? Math.max(sys.ram_total, sys.gpu_vram_total)
+            : (sys.ram_total || Infinity);
+
+        const currentVal = UI.model.selector.value;
+        UI.model.selector.innerHTML = '';
+        for (const [v, label] of Object.entries(MODEL_LABELS)) {
+            if (effectiveMem < MODEL_MIN_RAM[v]) continue;
+            const opt = document.createElement('option');
+            opt.value = v;
+            const downloaded = !!(d.variants[v] || {}).model;
+            opt.textContent = (downloaded ? '\u2713 ' : '') + label;
+            if (v === currentVal) opt.selected = true;
+            UI.model.selector.appendChild(opt);
+        }
+        // Fallback: se la selezione precedente non è più disponibile, usa la prima
+        if (!UI.model.selector.value && UI.model.selector.options.length > 0)
+            UI.model.selector.options[0].selected = true;
+
+        const variant = UI.model.selector.value;
+        const exists  = !!(d.variants[variant] || {}).model;
+        const isActive = d.activePath && d.activePath.includes(variant);
+
+        UI.model.btnDl.style.display  = exists ? 'none' : '';
+        UI.model.btnUse.style.display = (exists && !isActive) ? '' : 'none';
+
+        UI.model.activeBadge.style.display = isActive ? '' : 'none';
+        if (isActive) UI.model.activeBadge.textContent = `\u2713 Current active model: ${variant.toUpperCase()}`;
+
+        UI.model.visionToggle.checked = !!d.vision;
+    },
+
+    qr: (d) => {
+        UI.qr.url.textContent = d.url;
+        UI.qr.img.src = d.img + '?v=' + encodeURIComponent(d.url);
+    },
+
+    log: () => {
+        const e = Store.log.data[Store.log.data.length - 1];
+        if (!e) return;
+        const div = document.createElement('div');
+        div.className = `log-entry ${e.type}`;
+        div.textContent = `[${new Date().toLocaleTimeString()}] ${e.msg}`;
+        UI.log.box.appendChild(div);
+        UI.log.box.scrollTop = UI.log.box.scrollHeight;
+    },
+
+    dl: (d) => {
+        const b = d.type === 'llama' ? UI.bin : UI.model;
+        b.progWrap.classList.toggle('visible', d.visible);
+        b.progFill.style.width = `${d.pct}%`;
+        b.progLabel.textContent = d.label;
     }
-  } catch (e) { log('Select failed: ' + e.message, 'err'); }
-});
+};
 
-async function downloadModel(variant) {
-  const controller = new AbortController();
-  activeDownloadController = controller;
-  pollStatus();
+// --- 4. ACTIONS ---
+const Actions = {
+    dispatch: () => {
+        for (const k in Store) { if (Store[k].dirty) { Renderer[k](Store[k].data); Store[k].dirty = false; } }
+    },
+    sync: (sect, data) => { Store[sect].data = data; Store[sect].dirty = true; if (sect === 'model') Store.server.dirty = true; if (sect === 'server') Store.bin.dirty = true; Actions.dispatch(); },
+    addLog: (msg, type = '') => { Store.log.data.push({ msg, type }); Store.log.dirty = true; Actions.dispatch(); },
 
-  const fill  = document.getElementById('prog-model-fill');
-  const label = document.getElementById('prog-model-label');
-  const wrap  = document.getElementById('prog-model-wrap');
-  wrap.classList.add('visible');
-  fill.style.background = ''; fill.style.width = '0%'; label.textContent = 'Starting…';
+    applySysinfoRefresh: (seconds) => {
+        if (pollSysInterval) clearInterval(pollSysInterval);
+        const ms = seconds * 1000;
+        pollSysInterval = setInterval(async () => {
+            try {
+                const sys = await fetch('/api/sysinfo').then(r => r.json());
+                Actions.sync('sys', sys);
+            } catch (e) { }
+        }, ms);
+    },
 
-  log(`Downloading model for ${variant.toUpperCase()}…`, 'ok');
-  const ok = await streamDownload(`/api/download?target=model-${variant}`, fill, label, controller.signal);
-  activeDownloadController = null;
-  if (ok) log(`Model downloaded for ${variant.toUpperCase()}.`, 'ok');
-  pollStatus();
-}
+    loadLlamaReleases: async () => {
+        try {
+            // Recupera la lista dal tuo backend Go
+            Actions.addLog(`Loading llama-server releases`, 'ok');
 
-// ─── Vision toggle ─────────────────────────────────────────────
-document.getElementById('vision-toggle').addEventListener('change', async function() {
-  const enabled = this.checked;
-  const variant = document.getElementById('model-selector').value;
+            const res = await fetch('/api/llama/releases').then(r => r.json());
 
-  if (enabled) {
-    const p = (lastModelsPresent?.[variant]) || {};
-    if (!p.mmproj) {
-      // mmproj not on disk — download it first
-      mmprojDownloadController = new AbortController();
-      const fill  = document.getElementById('prog-model-fill');
-      const label = document.getElementById('prog-model-label');
-      const wrap  = document.getElementById('prog-model-wrap');
-      wrap.classList.add('visible');
-      fill.style.background = ''; fill.style.width = '0%'; label.textContent = 'Downloading mmproj…';
-      log(`Downloading mmproj for ${variant.toUpperCase()}…`, 'ok');
+            // Sincronizza lo stato: questo imposta dirty = true e lancia il Redraw
+            Actions.sync('bin', { releases: res });
 
-      const ok = await streamDownload(`/api/download?target=mmproj-${variant}`, fill, label, mmprojDownloadController.signal);
-      mmprojDownloadController = null;
-      if (!ok) {
-        this.checked = false;
-        pollStatus();
-        return;
-      }
-      log(`mmproj downloaded for ${variant.toUpperCase()}.`, 'ok');
+            if (res && res.length > 0) {
+                Actions.addLog(`Loaded ${res.length} llama-server releases`, 'ok');
+            }
+
+        } catch (e) {
+            Actions.addLog("Failed to fetch llama-server releases from GitHub", "err");
+        }
+    },
+
+    testConn: async (mode) => {
+        const endpoint = mode === 'local'
+            ? UI.config.localEndpoint.value.trim()
+            : UI.config.remoteEndpoint.value.trim();
+        const el = mode === 'local' ? UI.config.connStatusLocal : UI.config.connStatusRemote;
+        el.innerHTML = '';
+        el.style.cssText = 'font-size:0.8rem;color:#888';
+        el.textContent = 'Testing…';
+        try {
+            const d = await fetch(`/api/llama/test?endpoint=${encodeURIComponent(endpoint)}`).then(r => r.json());
+            if (d.reachable) {
+                el.innerHTML = `<span class="badge badge-ok">✓ reachable${d.model_name ? ' — ' + d.model_name : ''}</span>`;
+                Actions.addLog(`llama-server reachable at ${endpoint}${d.model_name ? ' · model: ' + d.model_name : ''}`, 'ok');
+            } else {
+                el.innerHTML = `<span class="badge badge-err">✗ not reachable</span>`;
+                Actions.addLog(`llama-server not reachable at ${endpoint}`, 'warn');
+            }
+        } catch (e) {
+            el.innerHTML = `<span class="badge badge-err">✗ error</span>`;
+            Actions.addLog('Test failed: ' + e.message, 'err');
+        }
+    },
+    saveConfig: async () => {
+        const payload = {
+            http_host:  UI.config.httpHost.value.trim(),
+            http_port:  UI.config.httpPort.value.trim(),
+            https_port: UI.config.httpsPort.value.trim(),
+            upload_dir: UI.config.uploadDir.value.trim(),
+            sysinfo_refresh_seconds: parseInt(UI.sys.refreshInput.value) || 5,
+            llama_remote: {
+                enabled:  UI.config.radioRemote.checked,
+                endpoint: UI.config.remoteEndpoint.value.trim()
+            },
+            llama_local: {
+                enabled:           !UI.config.radioRemote.checked,
+                endpoint:          UI.config.localEndpoint.value.trim(),
+                llama_bin:         UI.config.llamaBin.value.trim(),
+                llama_bin_version: UI.config.llamaBinVersion.value.trim(),
+                model_path:        UI.config.modelPath.value.trim(),
+                mmproj_path:       UI.config.mmprojPath.value.trim(),
+                context_size:      parseInt(UI.config.contextSize.value.trim()) || 0
+            },
+            model_urls: {
+                e2b: UI.config.urlE2b.value.trim(),
+                e4b: UI.config.urlE4b.value.trim()
+            }
+        };
+
+        UI.config.cfgStatus.textContent = 'Saving…';
+        UI.config.cfgStatus.style.color = '#888';
+        Actions.addLog('Saving configuration…');
+        try {
+            const res = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(r => r.json());
+
+            if (res.ok) {
+                UI.config.cfgStatus.textContent = 'Saved ✓';
+                UI.config.cfgStatus.style.color = '#44ff88';
+                UI.config.restartWarn.style.display = res.ports_changed ? 'block' : 'none';
+                Actions.addLog('Configuration saved' + (res.ports_changed ? ' — restart required' : ''), res.ports_changed ? 'warn' : 'ok');
+                Actions.sync('config', payload);
+                // Torna al Dashboard
+                UI.tabs.btns.forEach(b => b.classList.toggle('active', b.dataset.tab === 'dashboard'));
+                document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+                UI.tabs.dashboard.classList.add('active');
+            } else {
+                throw new Error(res.error || 'Save failed');
+            }
+        } catch (e) {
+            UI.config.cfgStatus.textContent = 'Error';
+            UI.config.cfgStatus.style.color = '#ff4444';
+            Actions.addLog(`Error saving config: ${e.message}`, 'err');
+        }
+        setTimeout(() => { UI.config.cfgStatus.textContent = ''; UI.config.cfgStatus.style.color = ''; }, 4000);
     }
-    await fetch(`/api/vision/toggle?enabled=true&variant=${encodeURIComponent(variant)}`, { method: 'POST' });
-    log('Vision enabled — restart llama-server to apply', 'ok');
-  } else {
-    await fetch('/api/vision/toggle?enabled=false', { method: 'POST' });
-    log('Vision disabled', 'ok');
-  }
-  pollStatus();
-});
+};
+
+// --- 5. UTILITIES ---
 
 // Returns true on success, false on cancel/error.
-async function streamDownload(url, fill, label, signal) {
-  try {
-    const resp = await fetch(url, { signal });
-    const reader = resp.body.getReader();
-    const dec = new TextDecoder();
-    let buf = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const lines = buf.split('\n'); buf = lines.pop();
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        try {
-          const e = JSON.parse(line.slice(6));
-          if (e.pct !== undefined) {
-            fill.style.width = e.pct + '%';
-            label.textContent = `${e.pct}% — ${fmtGB(e.bytes)} / ${fmtGB(e.total)}`;
-          }
-          if (e.done) { fill.style.background = '#44ff88'; label.textContent = 'Done!'; return true; }
-          if (e.info) { log(e.info, 'ok'); }
-          if (e.error) { fill.style.background = '#ff4444'; label.textContent = 'Error: ' + e.error; log('Download error: ' + e.error, 'err'); return false; }
-        } catch { /* skip */ }
-      }
-    }
-    return true;
-  } catch (e) {
-    if (e.name === 'AbortError') return false;
-    label.textContent = 'Failed: ' + e.message;
-    log('Download failed: ' + e.message, 'err');
-    return false;
-  }
-}
-
-// ─── Start/Stop llama-server ───────────────────────────────────
-document.getElementById('btn-start-llama').addEventListener('click', async () => {
-  const btnStart = document.getElementById('btn-start-llama');
-  const btnStop  = document.getElementById('btn-stop-llama');
-  btnStart.disabled = true;
-  btnStart.textContent = '⏳ Starting…';
-  log('Starting llama-server — loading model, please wait…', 'ok');
-  try {
-    const d = await fetch('/api/llama/start', { method: 'POST' }).then(r => r.json());
-    if (d.error) { log('Start failed: ' + d.error, 'err'); }
-    else { log('llama-server is ready.', 'ok'); }
-  } catch (e) { log('Start failed: ' + e.message, 'err'); }
-  btnStart.disabled = false;
-  btnStart.textContent = '▶ Start llama-server';
-  pollStatus();
-});
-
-document.getElementById('btn-stop-llama').addEventListener('click', async () => {
-  const btn = document.getElementById('btn-stop-llama');
-  btn.disabled = true;
-  btn.textContent = '⏳ Stopping…';
-  log('Stopping llama-server…', 'warn');
-  try {
-    await fetch('/api/llama/stop', { method: 'POST' });
-    log('llama-server stopped.', 'warn');
-  } catch (e) { log('Stop failed: ' + e.message, 'err'); }
-  btn.disabled = false;
-  btn.textContent = '■ Stop llama-server';
-  pollStatus();
-});
-
-// ─── Llama mode radio ──────────────────────────────────────────
-function setLlamaMode(mode) {
-  const isRemote = mode === 'remote';
-  document.getElementById('radio-local').checked = !isRemote;
-  document.getElementById('radio-remote').checked = isRemote;
-  document.getElementById('lbl-local').classList.toggle('active', !isRemote);
-  document.getElementById('lbl-remote').classList.toggle('active', isRemote);
-  document.getElementById('panel-local').style.display = isRemote ? 'none' : '';
-  document.getElementById('panel-remote').style.display = isRemote ? '' : 'none';
-  applyRemoteMode(isRemote);
-}
-document.querySelectorAll('input[name="llama-mode"]').forEach(r => {
-  r.addEventListener('change', () => setLlamaMode(r.value));
-});
-
-// ─── Load config ───────────────────────────────────────────────
-async function loadConfig() {
-  try {
-    const d = await fetch('/api/config').then(r => r.json());
-    document.getElementById('cfg-http-host').value = d.http_host ?? '';
-    document.getElementById('cfg-http-port').value = d.http_port ?? '';
-    document.getElementById('cfg-https-port').value = d.https_port ?? '';
-    document.getElementById('cfg-upload-dir').value = d.upload_dir ?? '';
-    const refreshVal = d.sysinfo_refresh_seconds || 5;
-    document.getElementById('sysinfo-refresh').value = refreshVal;
-    applySysinfoRefresh(refreshVal);
-
-    const loc = d.llama_local ?? {};
-    const rem = d.llama_remote ?? {};
-    document.getElementById('cfg-local-endpoint').value = loc.endpoint ?? 'http://localhost:11434';
-    document.getElementById('cfg-llama-bin').value = loc.llama_bin ?? '';
-    document.getElementById('cfg-model-path').value = loc.model_path ?? '';
-    document.getElementById('cfg-mmproj-path').value = loc.mmproj_path ?? '';
-    document.getElementById('cfg-llama-bin-version').value = loc.llama_bin_version ?? '';
-    document.getElementById('cfg-context-size').value = loc.context_size ?? '';
-    document.getElementById('cfg-remote-endpoint').value = rem.endpoint ?? '';
-
-    const urls = d.model_urls ?? {};
-    document.getElementById('cfg-url-e2b').value = urls.e2b || DEFAULT_MODEL_URLS.e2b;
-    document.getElementById('cfg-url-e4b').value = urls.e4b || DEFAULT_MODEL_URLS.e4b;
-    //document.getElementById('cfg-url-e31b').value = urls.e31b || DEFAULT_MODEL_URLS.e31b;
-
-    setLlamaMode(rem.enabled ? 'remote' : 'local');
-    log('Configuration loaded', 'ok');
-  } catch (e) { log('Failed to load config: ' + e.message, 'err'); }
-}
-
-// ─── Save config ───────────────────────────────────────────────
-document.getElementById('btn-save-cfg').addEventListener('click', async () => {
-  const isRemote = document.getElementById('radio-remote').checked;
-  const body = {
-    http_host: document.getElementById('cfg-http-host').value.trim(),
-    http_port: document.getElementById('cfg-http-port').value.trim(),
-    https_port: document.getElementById('cfg-https-port').value.trim(),
-    upload_dir: document.getElementById('cfg-upload-dir').value.trim(),
-    llama_local: {
-      enabled: !isRemote,
-      endpoint: document.getElementById('cfg-local-endpoint').value.trim(),
-      llama_bin: document.getElementById('cfg-llama-bin').value.trim(),
-      model_path: document.getElementById('cfg-model-path').value.trim(),
-      mmproj_path: document.getElementById('cfg-mmproj-path').value.trim(),
-      llama_bin_version: document.getElementById('cfg-llama-bin-version').value.trim(),
-      context_size: parseInt(document.getElementById('cfg-context-size').value.trim(), 10) || 0,
-    },
-    llama_remote: {
-      enabled: isRemote,
-      endpoint: document.getElementById('cfg-remote-endpoint').value.trim(),
-    },
-    model_urls: {
-      e2b:  document.getElementById('cfg-url-e2b').value.trim(),
-      e4b:  document.getElementById('cfg-url-e4b').value.trim(),
-      //e31b: document.getElementById('cfg-url-e31b').value.trim(),
-    },
-    sysinfo_refresh_seconds: parseInt(document.getElementById('sysinfo-refresh').value, 10) || 5,
-  };
-  const st = document.getElementById('cfg-status');
-  st.textContent = 'Saving…'; st.style.color = '#888';
-  try {
-    const d = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
-    if (d.ok) {
-      st.textContent = 'Saved ✓'; st.style.color = '#44ff88';
-      document.getElementById('cfg-restart-warn').style.display = d.ports_changed ? 'block' : 'none';
-      log('Configuration saved' + (d.ports_changed ? ' — restart required' : ''), d.ports_changed ? 'warn' : 'ok');
-      pollStatus();
-      document.querySelector('.tab-btn[data-tab="dashboard"]').click();
-    } else { st.textContent = 'Error'; st.style.color = '#ff4444'; }
-  } catch (e) { st.textContent = 'Failed'; st.style.color = '#ff4444'; log('Config save error: ' + e.message, 'err'); }
-  setTimeout(() => { st.textContent = ''; st.style.color = ''; }, 4000);
-});
-
-// ─── Reset model URLs ──────────────────────────────────────────
-document.getElementById('btn-reset-e2b').addEventListener('click', () => {
-  document.getElementById('cfg-url-e2b').value = DEFAULT_MODEL_URLS.e2b;
-});
-document.getElementById('btn-reset-e4b').addEventListener('click', () => {
-  document.getElementById('cfg-url-e4b').value = DEFAULT_MODEL_URLS.e4b;
-});
-//document.getElementById('btn-reset-e31b').addEventListener('click', () => {
-//  document.getElementById('cfg-url-e31b').value = DEFAULT_MODEL_URLS.e31b;
-//});
-
-// ─── Test connection ───────────────────────────────────────────
-async function testEndpoint(endpoint, statusEl) {
-  statusEl.textContent = 'Testing…'; statusEl.className = ''; statusEl.style.cssText = 'font-size:0.8rem;color:#888';
-  try {
-    const d = await fetch(`/api/llama/test?endpoint=${encodeURIComponent(endpoint)}`).then(r => r.json());
-    if (d.reachable) {
-      statusEl.innerHTML = `<span class="badge badge-ok">✓ reachable${d.model_name ? ' — ' + d.model_name : ''}</span>`;
-      log(`llama-server reachable at ${endpoint}${d.model_name ? ' · model: ' + d.model_name : ''}`, 'ok');
-    } else {
-      statusEl.innerHTML = `<span class="badge badge-err">✗ not reachable</span>`;
-      log(`llama-server not reachable at ${endpoint}`, 'warn');
-    }
-  } catch (e) {
-    statusEl.innerHTML = `<span class="badge badge-err">✗ error</span>`;
-    log('Test failed: ' + e.message, 'err');
-  }
-}
-document.getElementById('btn-test-local').addEventListener('click', () => {
-  testEndpoint(
-    document.getElementById('cfg-local-endpoint').value.trim(),
-    document.getElementById('conn-status-local')
-  );
-});
-document.getElementById('btn-test-remote').addEventListener('click', () => {
-  testEndpoint(
-    document.getElementById('cfg-remote-endpoint').value.trim(),
-    document.getElementById('conn-status-remote')
-  );
-});
-
-// ─── Regenerate SSL cert ───────────────────────────────────────
-document.getElementById('btn-regen-cert').addEventListener('click', async () => {
-  const st = document.getElementById('cert-status');
-  st.textContent = 'Generating…'; st.style.color = '#888';
-  log('Regenerating SSL certificate…');
-  try {
-    const d = await fetch('/api/cert/regenerate', { method: 'POST' }).then(r => r.json());
-    if (d.ok) {
-      st.textContent = 'Generated ✓'; st.style.color = '#44ff88';
-      log(`Certificate generated — SANs: ${d.hostnames.join(', ')} | IPs: ${d.ips.join(', ')}`, 'ok');
-    } else { st.textContent = 'Failed'; st.style.color = '#ff4444'; }
-  } catch (e) { st.textContent = 'Failed'; st.style.color = '#ff4444'; log('Cert error: ' + e.message, 'err'); }
-  setTimeout(() => { st.textContent = ''; st.style.color = ''; }, 5000);
-});
-
-// ─── QR Code ───────────────────────────────────────────────────
-async function loadQR() {
-  try {
-    const d = await fetch('/api/qr-url').then(r => r.json());
-    document.getElementById('qr-url').textContent = d.url;
-    document.getElementById('qr-img').src = '/api/qr?' + Date.now();
-  } catch (e) { /* silent — server may not be ready */ }
-}
-
-// ─── Sysinfo refresh interval (driven by config) ──────────────
-let sysinfoTimer = null;
-function applySysinfoRefresh(seconds) {
-  const ms = ((seconds > 0) ? seconds : 5) * 1000;
-  if (sysinfoTimer) clearInterval(sysinfoTimer);
-  sysinfoTimer = setInterval(pollSysinfo, ms);
-}
-
-// Live-save sysinfo refresh with debounce (handles arrow keys / typing)
-let sysinfoRefreshDebounce = null;
-document.getElementById('sysinfo-refresh').addEventListener('input', () => {
-  const v = parseInt(document.getElementById('sysinfo-refresh').value, 10);
-  if (!v || v < 1) return;
-  applySysinfoRefresh(v); // apply immediately
-  clearTimeout(sysinfoRefreshDebounce);
-  sysinfoRefreshDebounce = setTimeout(async () => {
+// Streams SSE progress events from the server and updates the progress bar.
+async function streamDownload(url, progFill, progLabel, signal) {
     try {
-      await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sysinfo_refresh_seconds: v }),
-      });
-    } catch (e) { log('Failed to save refresh interval: ' + e.message, 'err'); }
-  }, 800);
-});
+        const resp = await fetch(url, { signal });
+        const reader = resp.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const lines = buf.split('\n'); buf = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const e = JSON.parse(line.slice(6));
+                    if (e.pct !== undefined) {
+                        progFill.style.width = e.pct + '%';
+                        progLabel.textContent = `${e.pct}% — ${fmtGB(e.bytes)} / ${fmtGB(e.total)}`;
+                    }
+                    if (e.done)  { progFill.style.background = '#44ff88'; progLabel.textContent = 'Done!'; return true; }
+                    if (e.info)  { Actions.addLog(e.info, 'ok'); }
+                    if (e.error) { progFill.style.background = '#ff4444'; progLabel.textContent = 'Error: ' + e.error; Actions.addLog('Download error: ' + e.error, 'err'); return false; }
+                } catch { /* skip malformed line */ }
+            }
+        }
+        return true;
+    } catch (e) {
+        if (e.name === 'AbortError') return false;
+        progLabel.textContent = 'Failed: ' + e.message;
+        Actions.addLog('Download failed: ' + e.message, 'err');
+        return false;
+    }
+}
 
-// ─── Init ──────────────────────────────────────────────────────
-log('Admin dashboard loaded', 'ok');
-loadQR();
-loadConfig();       // calls applySysinfoRefresh() once config is loaded
-loadLlamaReleases();
-pollSysinfo();
-pollStatus();
-applySysinfoRefresh(5); // default until config arrives
-setInterval(pollStatus, 4000);
+// --- 6. INITIALIZATION ---
+function setLlamaMode(mode) {
+    const isRemote = mode === 'remote';
+    UI.config.radioLocal.checked  = !isRemote;
+    UI.config.radioRemote.checked = isRemote;
+    UI.config.lblLocal.classList.toggle('active', !isRemote);
+    UI.config.lblRemote.classList.toggle('active', isRemote);
+    UI.config.panelLocal.style.display  = isRemote ? 'none' : '';
+    UI.config.panelRemote.style.display = isRemote ? '' : 'none';
+}
+
+function init() {
+    // 1. Initial Data Fetch
+    Actions.addLog('Admin dashboard loading...', 'ok');
+    fetch('/api/config').then(r => r.json()).then(d => Actions.sync('config', d));
+    fetch('/api/qr-url').then(r => r.json()).then(d => Actions.sync('qr', { url: d.url, img: '/api/qr' }));
+    Actions.loadLlamaReleases();
+
+    // 2. Tab logic
+    UI.tabs.btns.forEach(b => {
+        b.addEventListener('click', () => {
+            UI.tabs.btns.forEach(x => x.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+            b.classList.add('active');
+            UI.tabs[b.dataset.tab].classList.add('active');
+        });
+    });
+
+    // 3. Status Polling (Status Llama/Model)
+    setInterval(async () => {
+        try {
+            const status = await fetch('/api/status').then(r => r.json());
+            Actions.sync('server', status);
+            Actions.sync('model', {
+                variants: status.models_present || {},
+                activePath: status.model_path,
+                vision: status.vision_enabled
+            });
+        } catch (e) { }
+    }, 4000);
+
+    // 4. Input Handlers
+    UI.model.selector.onchange = () => Renderer.model(Store.model.data);
+    UI.bin.btnRefresh.addEventListener('click', () => {
+        UI.bin.selector.innerHTML = '<option value="">Loading releases…</option>';
+        Actions.loadLlamaReleases();
+    });
+    UI.bin.selector.onchange   = () => Renderer.server(Store.server.data);
+
+    // ── llama-server Binary ───────────────────────────────────
+    let llamaDlController = null;
+
+    UI.bin.btnDl.addEventListener('click', async () => {
+        const tag = UI.bin.selector.value;
+        if (!tag) return;
+
+        const releases = Store.bin.data.releases || [];
+        const entry = releases.find(r => r.tag === tag);
+        const assetURL = entry ? entry.url : '';
+
+        await fetch(`/api/llama/select?tag=${encodeURIComponent(tag)}&url=${encodeURIComponent(assetURL)}`, { method: 'POST' });
+
+        llamaDlController = new AbortController();
+        UI.bin.btnDl.style.display     = 'none';
+        UI.bin.btnCancel.style.display = '';
+        UI.bin.progWrap.classList.add('visible');
+        UI.bin.progFill.style.width      = '0%';
+        UI.bin.progFill.style.background = '';
+        UI.bin.progLabel.textContent     = 'Starting…';
+        Actions.addLog(`Downloading llama-server ${tag}…`, 'ok');
+
+        const ok = await streamDownload('/api/download?target=llama', UI.bin.progFill, UI.bin.progLabel, llamaDlController.signal);
+        llamaDlController = null;
+        UI.bin.btnCancel.style.display = 'none';
+        if (ok) Actions.addLog(`llama-server ${tag} downloaded.`, 'ok');
+
+        const status = await fetch('/api/status').then(r => r.json());
+        Actions.sync('server', status);
+    });
+
+    UI.bin.btnCancel.addEventListener('click', () => {
+        if (!llamaDlController) return;
+        llamaDlController.abort();
+        llamaDlController = null;
+        UI.bin.progWrap.classList.remove('visible');
+        UI.bin.btnCancel.style.display = 'none';
+        Actions.addLog('llama-server download cancelled', 'warn');
+    });
+
+    UI.bin.btnUse.addEventListener('click', async () => {
+        const tag = UI.bin.selector.value;
+        if (!tag) return;
+        const releases = Store.bin.data.releases || [];
+        const entry = releases.find(r => r.tag === tag);
+        const assetURL = entry ? entry.url : '';
+        try {
+            const d = await fetch(`/api/llama/select?tag=${encodeURIComponent(tag)}&url=${encodeURIComponent(assetURL)}`, { method: 'POST' }).then(r => r.json());
+            if (d.ok) {
+                Actions.addLog(`llama-server active version set to ${tag}`, 'ok');
+                const status = await fetch('/api/status').then(r => r.json());
+                Actions.sync('server', status);
+            }
+        } catch (e) { Actions.addLog('Select failed: ' + e.message, 'err'); }
+    });
+
+    UI.config.btnSave.onclick = () => Actions.saveConfig();
+
+    // ── Gemma Model ───────────────────────────────────────────
+    let modelDlController  = null;
+    let mmprojDlController = null;
+
+    UI.model.btnDl.addEventListener('click', async () => {
+        const variant = UI.model.selector.value;
+        if (!variant) return;
+
+        modelDlController = new AbortController();
+        UI.model.btnDl.style.display     = 'none';
+        UI.model.btnCancel.style.display = '';
+        UI.model.progWrap.classList.add('visible');
+        UI.model.progFill.style.width      = '0%';
+        UI.model.progFill.style.background = '';
+        UI.model.progLabel.textContent     = 'Starting…';
+        Actions.addLog(`Downloading model for ${variant.toUpperCase()}…`, 'ok');
+
+        const ok = await streamDownload(`/api/download?target=model-${variant}`, UI.model.progFill, UI.model.progLabel, modelDlController.signal);
+        modelDlController = null;
+        UI.model.btnCancel.style.display = 'none';
+        if (ok) Actions.addLog(`Model downloaded for ${variant.toUpperCase()}.`, 'ok');
+
+        const status = await fetch('/api/status').then(r => r.json());
+        Actions.sync('server', status);
+        Actions.sync('model', { variants: status.models_present || {}, activePath: status.model_path, vision: status.vision_enabled });
+    });
+
+    UI.model.btnCancel.addEventListener('click', () => {
+        if (!modelDlController) return;
+        modelDlController.abort();
+        modelDlController = null;
+        UI.model.progWrap.classList.remove('visible');
+        UI.model.btnCancel.style.display = 'none';
+        Actions.addLog('Model download cancelled', 'warn');
+    });
+
+    UI.model.btnUse.addEventListener('click', async () => {
+        const variant = UI.model.selector.value;
+        if (!variant) return;
+        try {
+            const d = await fetch(`/api/model/select?variant=${variant}`, { method: 'POST' }).then(r => r.json());
+            if (d.ok) {
+                Actions.addLog(`Model set to ${variant.toUpperCase()}: ${d.model_path}`, 'ok');
+                const status = await fetch('/api/status').then(r => r.json());
+                Actions.sync('server', status);
+                Actions.sync('model', { variants: status.models_present || {}, activePath: status.model_path, vision: status.vision_enabled });
+            }
+        } catch (e) { Actions.addLog('Select failed: ' + e.message, 'err'); }
+    });
+
+    UI.model.visionToggle.addEventListener('change', async function () {
+        const enabled = this.checked;
+        const variant = UI.model.selector.value;
+
+        if (enabled) {
+            const modelsPresent = Store.model.data.variants || {};
+            const hasmmproj = !!(modelsPresent[variant] || {}).mmproj;
+            if (!hasmmproj) {
+                // mmproj non presente — scaricalo prima
+                mmprojDlController = new AbortController();
+                UI.model.progWrap.classList.add('visible');
+                UI.model.progFill.style.width      = '0%';
+                UI.model.progFill.style.background = '';
+                UI.model.progLabel.textContent     = 'Downloading mmproj…';
+                Actions.addLog(`Downloading mmproj for ${variant.toUpperCase()}…`, 'ok');
+
+                const ok = await streamDownload(`/api/download?target=mmproj-${variant}`, UI.model.progFill, UI.model.progLabel, mmprojDlController.signal);
+                mmprojDlController = null;
+                if (!ok) {
+                    this.checked = false;
+                    const status = await fetch('/api/status').then(r => r.json());
+                    Actions.sync('model', { variants: status.models_present || {}, activePath: status.model_path, vision: status.vision_enabled });
+                    return;
+                }
+                Actions.addLog(`mmproj downloaded for ${variant.toUpperCase()}.`, 'ok');
+            }
+            await fetch(`/api/vision/toggle?enabled=true&variant=${encodeURIComponent(variant)}`, { method: 'POST' });
+            Actions.addLog('Vision enabled — restart llama-server to apply', 'ok');
+        } else {
+            await fetch('/api/vision/toggle?enabled=false', { method: 'POST' });
+            Actions.addLog('Vision disabled', 'ok');
+        }
+
+        const status = await fetch('/api/status').then(r => r.json());
+        Actions.sync('server', status);
+        Actions.sync('model', { variants: status.models_present || {}, activePath: status.model_path, vision: status.vision_enabled });
+    });
+
+    // ── Start / Stop llama-server ─────────────────────────────
+    UI.server.btnStart.addEventListener('click', async () => {
+        UI.server.btnStart.disabled    = true;
+        UI.server.btnStart.textContent = '⏳ Starting…';
+        Actions.addLog('Starting llama-server — loading model, please wait…', 'ok');
+        try {
+            const d = await fetch('/api/llama/start', { method: 'POST' }).then(r => r.json());
+            if (d.error) Actions.addLog('Start failed: ' + d.error, 'err');
+            else         Actions.addLog('llama-server is ready.', 'ok');
+        } catch (e) { Actions.addLog('Start failed: ' + e.message, 'err'); }
+        UI.server.btnStart.disabled    = false;
+        UI.server.btnStart.textContent = '▶ Start llama-server';
+        const status = await fetch('/api/status').then(r => r.json());
+        Actions.sync('server', status);
+        Actions.sync('model', { variants: status.models_present || {}, activePath: status.model_path, vision: status.vision_enabled });
+    });
+
+    UI.server.btnStop.addEventListener('click', async () => {
+        UI.server.btnStop.disabled    = true;
+        UI.server.btnStop.textContent = '⏳ Stopping…';
+        Actions.addLog('Stopping llama-server…', 'warn');
+        try {
+            await fetch('/api/llama/stop', { method: 'POST' });
+            Actions.addLog('llama-server stopped.', 'warn');
+        } catch (e) { Actions.addLog('Stop failed: ' + e.message, 'err'); }
+        UI.server.btnStop.disabled    = false;
+        UI.server.btnStop.textContent = '■ Stop llama-server';
+        const status = await fetch('/api/status').then(r => r.json());
+        Actions.sync('server', status);
+        Actions.sync('model', { variants: status.models_present || {}, activePath: status.model_path, vision: status.vision_enabled });
+    });
+    [UI.config.radioLocal, UI.config.radioRemote].forEach(radio => {
+        radio.addEventListener('change', (e) => setLlamaMode(e.target.value));
+    });
+
+    UI.config.btnTestLocal.onclick  = () => Actions.testConn('local');
+    UI.config.btnTestRemote.onclick = () => Actions.testConn('remote');
+
+    UI.config.btnResetE2b.onclick = () => { UI.config.urlE2b.value = DEFAULT_URLS.e2b; };
+    UI.config.btnResetE4b.onclick = () => { UI.config.urlE4b.value = DEFAULT_URLS.e4b; };
+
+    // ── SSL Certificate ───────────────────────────────────────
+    UI.config.btnRegen.addEventListener('click', async () => {
+        UI.config.certStatus.textContent = 'Generating…';
+        UI.config.certStatus.style.color = '#888';
+        Actions.addLog('Regenerating SSL certificate…');
+        try {
+            const d = await fetch('/api/cert/regenerate', { method: 'POST' }).then(r => r.json());
+            if (d.ok) {
+                UI.config.certStatus.textContent = 'Generated ✓';
+                UI.config.certStatus.style.color = '#44ff88';
+                Actions.addLog(`Certificate generated — SANs: ${d.hostnames.join(', ')} | IPs: ${d.ips.join(', ')}`, 'ok');
+            } else {
+                throw new Error(d.error || 'Generation failed');
+            }
+        } catch (e) {
+            UI.config.certStatus.textContent = 'Failed';
+            UI.config.certStatus.style.color = '#ff4444';
+            Actions.addLog('Cert error: ' + e.message, 'err');
+        }
+        setTimeout(() => { UI.config.certStatus.textContent = ''; UI.config.certStatus.style.color = ''; }, 5000);
+    });
+
+    // ── Sysinfo refresh — applica subito, salva dopo 800ms ────
+    let sysinfoDebounce = null;
+    UI.sys.refreshInput.addEventListener('input', () => {
+        const v = parseInt(UI.sys.refreshInput.value, 10);
+        if (!v || v < 1) return;
+        Actions.applySysinfoRefresh(v);
+        clearTimeout(sysinfoDebounce);
+        sysinfoDebounce = setTimeout(async () => {
+            try {
+                await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sysinfo_refresh_seconds: v })
+                });
+            } catch (e) { Actions.addLog('Failed to save refresh interval: ' + e.message, 'err'); }
+        }, 800);
+    });
+
+    Actions.addLog("System Initialized", "ok");
+}
+
+function fmtGB(b) { return (b / 1073741824).toFixed(1) + ' GB'; }
+document.addEventListener('DOMContentLoaded', init);

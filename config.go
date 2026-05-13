@@ -96,6 +96,9 @@ func loadConfig(path string) (*Config, error) {
 	if cfg.LlamaLocal.ContextSize == 0 {
 		cfg.LlamaLocal.ContextSize = 4096
 	}
+	if cfg.SysinfoRefreshSeconds == 0 {
+		cfg.SysinfoRefreshSeconds = 5
+	}
 
 	// Auto-select binary based on current OS
 	if cfg.LlamaLocal.LlamaBin == "" || cfg.LlamaLocal.LlamaBin == "bin/linux/llama-server" {
