@@ -1,10 +1,10 @@
 {
   "http_host": "localhost",
-  "http_port": "8780",
-  "https_port": "8781",
+  "http_port": "8080",
+  "https_port": "8443",
   "llama_local": {
     "enabled": true,
-    "endpoint": "http://localhost:8782",
+    "endpoint": "http://localhost:11234",
     "model_path": "models/gemma-4-e2b.gguf",
     "mmproj_path": "models/mmproj-gemma-4-e2b.gguf",
     "vision_enabled": false,
