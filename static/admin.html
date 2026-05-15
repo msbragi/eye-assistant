@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GemmaLink — Admin</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link href="css/admin.css" rel="stylesheet">
+  <link href="css/admin.css?v=1.0.0" rel="stylesheet">
 </head>
 
 <body>
@@ -14,9 +14,9 @@
   <header>
     <h1>Gemma<span>Link</span> <span style="color:#444;font-weight:400;font-size:0.9rem">/ admin</span></h1>
     <div class="tab-bar">
-      <button class="tab-btn active" data-tab="qr">QR Code</button>
-      <button class="tab-btn" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
       <button class="tab-btn" data-tab="config">Config</button>
+      <button class="tab-btn" data-tab="qr">QR Code</button>
     </div>
     <div class="header-links">
       <a href="/eye.html">📷 Open Eye</a>
@@ -24,7 +24,7 @@
   </header>
 
   <!-- ═══════════ QR CODE TAB ═══════════ -->
-  <div id="tab-qr" class="tab-panel active">
+  <div id="tab-qr" class="tab-panel">
     <div class="container" style="max-width:520px">
 
       <div class="card full-width" style="text-align:center">
@@ -47,7 +47,7 @@
   </div><!-- /tab-qr -->
 
   <!-- ═══════════ DASHBOARD TAB ═══════════ -->
-  <div id="tab-dashboard" class="tab-panel">
+  <div id="tab-dashboard" class="tab-panel active">
     <div class="container">
 
       <!-- System Resources -->
@@ -323,7 +323,7 @@
     </div>
   </div><!-- /tab-config -->
 
-  <script src="js/admin.js" defer></script>
+  <script src="js/admin.js?v=1.0.0" defer></script>
 </body>
 
 </html>

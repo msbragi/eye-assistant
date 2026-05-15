@@ -44,13 +44,17 @@ func GenerateSelfSignedCert(hostnames []string, ips []net.IP) error {
 			CommonName:   "gemmalink",
 			Organization: []string{"GemmaLink"},
 		},
-		NotBefore:             time.Now().Add(-time.Minute),
-		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		NotBefore:   time.Now().Add(-time.Hour * 24),      // Retrodatato di 24 ore per evitare problemi di fuso orario
+		NotAfter:    time.Now().Add(365 * 24 * time.Hour), // 1 anno (perfetto per iOS)
+		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+
+		// --- MODIFICHE CRUCIALI PER IOS ---
 		BasicConstraintsValid: true,
-		DNSNames:              hostnames,
-		IPAddresses:           ips,
+		IsCA:                  false, // Dice esplicitamente a iOS che questo NON è un certificato Root/CA
+
+		DNSNames:    hostnames,
+		IPAddresses: ips,
 	}
 
 	// Self-sign

@@ -45,9 +45,9 @@ write_config() {
 
   if [[ "$TARGET_OS" == "win" ]]; then
     # Usiamo il doppio backslash per il JSON
-    LLAMA_BIN="bin\\\\windows\\\\llama-server.exe"
+    LLAMA_BIN="bin\\\\llama-server.exe"
   else
-    LLAMA_BIN="bin/linux/llama-server"
+    LLAMA_BIN="bin/llama-server"
   fi
 
   echo "▶ Generating config.gl for $TARGET_OS..."
@@ -61,8 +61,8 @@ write_config() {
   "llama_local": {
     "enabled": false,
     "endpoint": "http://localhost:9382",
-    "model_path": "models/gemma-4-e2b.gguf",
-    "mmproj_path": "models/mmproj-gemma-4-e2b.gguf",
+    "model_path": "",
+    "mmproj_path": "",
     "vision_enabled": false,
     "llama_bin": "$LLAMA_BIN",
     "llama_bin_version": "",
@@ -122,7 +122,10 @@ build_windows() {
     "$ROOT"
 
   write_config "win"
+  # Copy README.md  
   [[ -f "$ROOT/README.md" ]] && cp "$ROOT/README.md" "$STAGING/README.md"
+  # Copy Powershell support scripts
+  cp "$SCRIPT_DIR"/*.ps1 "$STAGING"
 
   local ARCHIVE="$RELEASES/gemmalink-${VERSION}-windows-amd64.zip"
   

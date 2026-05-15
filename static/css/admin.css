@@ -554,9 +554,10 @@
         background: #111;
         border: 1px solid #2a2a2a;
         border-radius: 6px;
-        padding: 7px 10px;
+        padding: 7px 0px;
         font-family: monospace;
         transition: border-color 0.15s;
+        text-align: center;
     }
 
     span.sysynfo-refresh-text {
