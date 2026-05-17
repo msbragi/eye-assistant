@@ -87,6 +87,31 @@
         display: block;
     }
 
+    /* Struttura base del pallino sul tab QR */
+    .tab-btn[data-tab="qr"]::before {
+        content: '';
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 8px;
+        vertical-align: middle;
+        background-color: #44ff88;
+        transition: background-color 0.3s ease;
+    }
+
+    /* Stato disabilitato: cambia il pallino e blocca il tab */
+    .tab-btn[data-tab="qr"].disabled {
+        opacity: 0.5;
+        pointer-events: none;
+        cursor: not-allowed;
+    }
+
+    /* Quando è disabilitato, il pallino diventa rosso */
+    .tab-btn[data-tab="qr"].disabled::before {
+        background-color: #ff4444;
+    }
+
     /* ── Dashboard grid ──────────────────────────────── */
     .container {
         max-width: 1100px;
@@ -557,6 +582,7 @@
         padding: 7px 0px;
         font-family: monospace;
         transition: border-color 0.15s;
+        width: 80px;
         text-align: center;
     }
 

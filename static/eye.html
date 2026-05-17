@@ -1,273 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>GemmaLink Eye Assistant</title>
-    <style>
-        :root {
-            --accent: #4f46e5;
-            --bg-dark: #0a0a0a;
-            --glass: rgba(255, 255, 255, 0.1);
-            --panel-bg: rgba(15, 15, 15, 0.9);
-        }
-
-        body,
-        html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background: var(--bg-dark);
-            color: white;
-            font-family: -apple-system, system-ui, sans-serif;
-            overflow: hidden;
-        }
-
-        /* --- LAYER 0: MEDIA --- */
-        #camera-layer {
-            position: fixed;
-            inset: 0;
-            z-index: 0;
-            background: #000;
-        }
-
-        #video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: all 0.3s ease-out;
-        }
-
-        #snapshot {
-            display: block;
-            height: 35%; /* Thumbnail in alto */
-            object-fit: cover;
-            border-bottom: 2px solid var(--accent);
-        }
-        
-        /* Mirino */
-        .finder-overlay {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 260px;
-            height: 260px;
-            border: 1.5px solid rgba(255, 255, 255, 0.6);
-            border-radius: 32px;
-            box-shadow: 0 0 0 5000px rgba(0, 0, 0, 0.5);
-            pointer-events: none;
-            z-index: 5;
-        }
-
-        /* --- LAYER 1: UI --- */
-        .ui-container {
-            position: relative;
-            z-index: 10;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-
-        [data-state] .state-preview,
-        [data-state] .state-ask,
-        [data-state] .state-response {
-            display: none;
-        }
-
-        /* STATE: PREVIEW */
-        body[data-state="preview"] .state-preview {
-            display: flex;
-            height: 100%;
-            justify-content: center;
-            align-items: flex-end;
-            padding-bottom: 50px;
-        }
-
-        body[data-state="preview"] #snapshot {
-            display: none;
-        }
-
-        .fab-capture {
-            width: 76px;
-            height: 76px;
-            border-radius: 50%;
-            border: 4px solid white;
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(10px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .fab-capture::after {
-            content: '';
-            width: 56px;
-            height: 56px;
-            background: white;
-            border-radius: 50%;
-        }
-
-        /* STATE: ASK */
-        body[data-state="ask"] .state-ask {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            justify-content: flex-end;
-        }
-
-    
-        body[data-state="ask"] .finder-overlay,
-        body[data-state="ask"] #video {
-            display: none;
-        }
-
-        /* Chips Preset */
-        .presets-container {
-            display: flex;
-            overflow-x: auto;
-            gap: 8px;
-            padding: 10px 0;
-            scrollbar-width: none;
-        }
-
-        .presets-container::-webkit-scrollbar {
-            display: none;
-        }
-
-        .chip {
-            background: #333;
-            color: white;
-            border: 1px solid #444;
-            padding: 8px 16px;
-            border-radius: 20px;
-            white-space: nowrap;
-            font-size: 14px;
-            cursor: pointer;
-        }
-
-        .chip:active {
-            background: var(--accent);
-        }
-
-        .interaction-sheet {
-            background: var(--panel-bg);
-            backdrop-filter: blur(20px);
-            padding: 20px;
-            border-radius: 24px 24px 0 0;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        textarea {
-            width: 100%;
-            background: #222;
-            border: 1px solid #333;
-            color: white;
-            border-radius: 12px;
-            padding: 12px;
-            font-size: 16px;
-            resize: none;
-            box-sizing: border-box;
-            margin-bottom: 15px;
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 10px;
-        }
-
-        .btn {
-            flex: 1;
-            padding: 15px;
-            border-radius: 12px;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .btn-primary {
-            background: var(--accent);
-            color: white;
-        }
-
-        .btn-secondary {
-            background: #333;
-            color: white;
-        }
-
-        /* STATE: RESPONSE */
-        body[data-state="response"] .state-response {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-
-        body[data-state="response"] #video, 
-        body[data-state="response"] .finder-overlay {
-            display: none;
-        }
-
-        .response-panel {
-            flex: 1;
-            background: var(--panel-bg);
-            backdrop-filter: blur(20px);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .response-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            font-size: 16px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-        }
-
-        .loader-bar {
-            height: 3px;
-            width: 100%;
-            background: #222;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .loader-bar.active::after {
-            content: '';
-            position: absolute;
-            height: 100%;
-            width: 40%;
-            background: var(--accent);
-            animation: loading 1.5s infinite;
-        }
-
-        @keyframes loading {
-            0% { left: -40%; }
-            100% { left: 110%; }
-        }
-
-        .btn-new {
-            margin: 15px;
-            background: var(--accent);
-            color: white;
-            max-height: 40px;
-        }
-    </style>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link href="css/eye.css?v=1.0.0" rel="stylesheet">
 </head>
 
-<body data-state="preview">
+<body data-state="ask" class="mode-text">
+    <div id="boot-overlay" class="loading">
+        <div class="boot-loader">
+            <div class="spinner"></div>
+            <p>Connecting Gemma Server...</p>
+        </div>
+        <div class="boot-error">
+            <h3>⚠️ Server Not Ready</h3>
+            <p>The server is offline or the AI model has not been started.</p>
+            <button onclick="window.location.reload()" class="btn-retry">Retry</button>
+        </div>
+    </div>
 
-    <div id="camera-layer">
-        <video id="video" autoplay playsinline></video>
-        <div class="finder-overlay" id="finder"></div>
+    <div id="mode-selector" class="mode-selector">
+        <button id="btn-mode-vision" class="mode-btn" onclick="switchMode('vision')">📸 Vision</button>
+        <button id="btn-mode-text" class="mode-btn" onclick="switchMode('text')">✍️ Text Only</button>
     </div>
 
     <main class="ui-container">
-        <img id="snapshot" alt="snapshot">
+        <div id="camera-layer">
+            <video id="video" playsinline muted></video>
+            <div class="finder-overlay" id="finder"></div>
+        </div>
+
+        <img id="snapshot" alt="snapshot" />
 
         <div class="state-preview">
             <button class="fab-capture" id="btn-capture"></button>
@@ -281,9 +46,9 @@
                     <div class="chip" data-q="What does this label mean?">Label</div>
                     <div class="chip" data-q="Step by step instructions for this.">Manual</div>
                 </div>
-                <textarea id="question" rows="3" placeholder="Ask Gemma anything..."></textarea>
-                <div class="btn-group">
-                    <button class="btn btn-secondary" id="btn-retake">Retake</button>
+                <textarea id="question" rows="4" placeholder="Ask Gemma anything..."></textarea>
+                <div class="btn-group" style="padding:0;">
+                    <button class="btn btn-secondary" id="btn-retake" style="display:none;">Retake</button>
                     <button class="btn btn-primary" id="btn-ask">Ask Gemma</button>
                 </div>
             </div>
@@ -293,123 +58,13 @@
             <div class="response-panel">
                 <div class="loader-bar" id="loader"></div>
                 <div class="response-content" id="answer-box"></div>
-                <button class="btn btn-new" id="btn-new" style="display:none">New Question</button>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" id="btn-stop">Stop</button>
+                    <button class="btn btn-primary" id="btn-new" disabled>New Question</button>
+                </div>
             </div>
         </div>
-
     </main>
-
-    <script>
-        const state = { current: 'preview' };
-        const els = {
-            body: document.body,
-            video: document.getElementById('video'),
-            snapshot: document.getElementById('snapshot'),
-            finder: document.getElementById('finder'),
-            question: document.getElementById('question'),
-            answerBox: document.getElementById('answer-box'),
-            loader: document.getElementById('loader'),
-            btns: {
-                capture: document.getElementById('btn-capture'),
-                retake: document.getElementById('btn-retake'),
-                ask: document.getElementById('btn-ask'),
-                new: document.getElementById('btn-new')
-            }
-        };
-
-        let capturedBlob = null;
-
-        function setUIState(s) {
-            state.current = s;
-            els.body.setAttribute('data-state', s);
-        }
-
-        window.onload = async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1280 } }
-                });
-                els.video.srcObject = stream;
-            } catch (e) { console.error(e); }
-        };
-
-        document.querySelectorAll('.chip').forEach(chip => {
-            chip.onclick = () => { els.question.value = chip.dataset.q; };
-        });
-
-        // --- AZIONE DI CATTURA CON CROP ---
-        els.btns.capture.onclick = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            // Coordinate del mirino rispetto al video visualizzato
-            const finderRect = els.finder.getBoundingClientRect();
-            const videoRect = els.video.getBoundingClientRect();
-
-            // Calcolo scala tra CSS e Risoluzione Reale
-            const scaleX = els.video.videoWidth / videoRect.width;
-            const scaleY = els.video.videoHeight / videoRect.height;
-
-            // Coordinate del crop in pixel reali
-            const sx = (finderRect.left - videoRect.left) * scaleX;
-            const sy = (finderRect.top - videoRect.top) * scaleY;
-            const sw = finderRect.width * scaleX;
-            const sh = finderRect.height * scaleY;
-
-            canvas.width = sw;
-            canvas.height = sh;
-
-            ctx.drawImage(els.video, sx, sy, sw, sh, 0, 0, sw, sh);
-
-            canvas.toBlob(b => {
-                capturedBlob = b;
-                els.snapshot.src = URL.createObjectURL(b);
-                setUIState('ask');
-            }, 'image/jpeg', 0.85);
-        };
-
-        els.btns.retake.onclick = () => setUIState('preview');
-
-        els.btns.ask.onclick = async () => {
-            const q = els.question.value || "Describe this.";
-            setUIState('response');
-            els.answerBox.textContent = "Thinking...";
-            els.loader.classList.add('active');
-            els.btns.new.style.display = "none";
-
-            const fd = new FormData();
-            fd.append('question', q);
-            if (capturedBlob) fd.append('image', capturedBlob, 'crop.jpg');
-
-            try {
-                els.answerBox.textContent = "";
-                const r = await fetch('/ask', { method: 'POST', body: fd });
-                const reader = r.body.getReader();
-                const decoder = new TextDecoder();
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n');
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const p = line.slice(6);
-                            if (p === '[DONE]') break;
-                            try {
-                                els.answerBox.textContent += JSON.parse(p);
-                                els.answerBox.scrollTop = els.answerBox.scrollHeight;
-                            } catch (e) { }
-                        }
-                    }
-                }
-            } catch (e) { els.answerBox.textContent = "Error connecting to backend."; }
-
-            els.loader.classList.remove('active');
-            els.btns.new.style.display = "block";
-        };
-
-        els.btns.new.onclick = () => setUIState('preview');
-    </script>
+    <script src="js/eye.js?v=1.0.0"></script>
 </body>
 </html>

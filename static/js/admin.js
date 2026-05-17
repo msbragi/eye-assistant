@@ -10,14 +10,14 @@ const DEFAULT_URLS = {
 };
 
 const MODEL_LABELS = {
-    e2b:  'Gemma 4 E2B (2B params)',
-    e4b:  'Gemma 4 E4B (4B params)',
+    e2b: 'Gemma 4 E2B (2B params)',
+    e4b: 'Gemma 4 E4B (4B params)',
     e31b: 'Gemma 4 E31B (31B params)',
 };
 
 const MODEL_MIN_RAM = {
-    e2b:   4 * 1073741824,   //  4 GB
-    e4b:   6 * 1073741824,   //  6 GB
+    e2b: 4 * 1073741824,   //  4 GB
+    e4b: 6 * 1073741824,   //  6 GB
     e31b: 24 * 1073741824,   // 24 GB
 };
 
@@ -45,59 +45,59 @@ const UI = {
 
     // ── Store.sys ─────────────────────────────────────────
     sys: {
-        ramBar:       document.getElementById('ram-bar'),
-        ramVal:       document.getElementById('ram-label'),
-        cpuBar:       document.getElementById('cpu-bar'),
-        cpuVal:       document.getElementById('cpu-label'),
-        diskBar:      document.getElementById('disk-bar'),
-        diskVal:      document.getElementById('disk-label'),
-        gpuInfo:      document.getElementById('gpu-info'),
+        ramBar: document.getElementById('ram-bar'),
+        ramVal: document.getElementById('ram-label'),
+        cpuBar: document.getElementById('cpu-bar'),
+        cpuVal: document.getElementById('cpu-label'),
+        diskBar: document.getElementById('disk-bar'),
+        diskVal: document.getElementById('disk-label'),
+        gpuInfo: document.getElementById('gpu-info'),
         refreshInput: document.getElementById('sysinfo-refresh'),
     },
 
     // ── Store.server ──────────────────────────────────────
     server: {
-        dotServer:    document.getElementById('dot-server'),
-        valServer:    document.getElementById('val-server'),
-        dotLlama:     document.getElementById('dot-llama'),
-        valLlama:     document.getElementById('val-llama'),
-        dotModel:     document.getElementById('dot-model'),
-        valModel:     document.getElementById('val-model'),
-        rowStop:      document.getElementById('row-stop'),
-        btnStart:     document.getElementById('btn-start-llama'),
-        btnStop:      document.getElementById('btn-stop-llama'),
+        dotServer: document.getElementById('dot-server'),
+        valServer: document.getElementById('val-server'),
+        dotLlama: document.getElementById('dot-llama'),
+        valLlama: document.getElementById('val-llama'),
+        dotModel: document.getElementById('dot-model'),
+        valModel: document.getElementById('val-model'),
+        rowStop: document.getElementById('row-stop'),
+        btnStart: document.getElementById('btn-start-llama'),
+        btnStop: document.getElementById('btn-stop-llama'),
         remoteNotice: document.getElementById('remote-notice'),
     },
 
     // ── Store.bin ─────────────────────────────────────────
     bin: {
-        card:        document.getElementById('card-binary'),
-        selector:    document.getElementById('llama-selector'),
-        btnRefresh:  document.getElementById('btn-refresh-llama'),
-        dotBin:      document.getElementById('dot-bin'),
-        labelBin:    document.getElementById('label-bin'),
-        valBin:      document.getElementById('val-bin'),
+        card: document.getElementById('card-binary'),
+        selector: document.getElementById('llama-selector'),
+        btnRefresh: document.getElementById('btn-refresh-llama'),
+        dotBin: document.getElementById('dot-bin'),
+        labelBin: document.getElementById('label-bin'),
+        valBin: document.getElementById('val-bin'),
         activeBadge: document.getElementById('llama-active-badge'),
-        btnDl:       document.getElementById('btn-dl-llama'),
-        btnCancel:   document.getElementById('btn-cancel-dl-llama'),
-        btnUse:      document.getElementById('btn-use-llama'),
-        progWrap:    document.getElementById('prog-llama-wrap'),
-        progFill:    document.getElementById('prog-llama-fill'),
-        progLabel:   document.getElementById('prog-llama-label'),
+        btnDl: document.getElementById('btn-dl-llama'),
+        btnCancel: document.getElementById('btn-cancel-dl-llama'),
+        btnUse: document.getElementById('btn-use-llama'),
+        progWrap: document.getElementById('prog-llama-wrap'),
+        progFill: document.getElementById('prog-llama-fill'),
+        progLabel: document.getElementById('prog-llama-label'),
     },
 
     // ── Store.model ───────────────────────────────────────
     model: {
-        card:         document.getElementById('card-model'),
-        selector:     document.getElementById('model-selector'),
+        card: document.getElementById('card-model'),
+        selector: document.getElementById('model-selector'),
         visionToggle: document.getElementById('vision-toggle'),
-        activeBadge:  document.getElementById('model-active-badge'),
-        btnDl:        document.getElementById('btn-dl-model'),
-        btnCancel:    document.getElementById('btn-cancel-dl'),
-        btnUse:       document.getElementById('btn-use-model'),
-        progWrap:     document.getElementById('prog-model-wrap'),
-        progFill:     document.getElementById('prog-model-fill'),
-        progLabel:    document.getElementById('prog-model-label'),
+        activeBadge: document.getElementById('model-active-badge'),
+        btnDl: document.getElementById('btn-dl-model'),
+        btnCancel: document.getElementById('btn-cancel-dl'),
+        btnUse: document.getElementById('btn-use-model'),
+        progWrap: document.getElementById('prog-model-wrap'),
+        progFill: document.getElementById('prog-model-fill'),
+        progLabel: document.getElementById('prog-model-label'),
     },
 
     // ── Store.log ─────────────────────────────────────────
@@ -107,48 +107,48 @@ const UI = {
 
     // ── Store.config — GemmaLink Server ───────────────────
     config: {
-        httpHost:        document.getElementById('cfg-http-host'),
-        httpPort:        document.getElementById('cfg-http-port'),
-        httpsPort:       document.getElementById('cfg-https-port'),
-        uploadDir:       document.getElementById('cfg-upload-dir'),
-        restartWarn:     document.getElementById('cfg-restart-warn'),
+        httpHost: document.getElementById('cfg-http-host'),
+        httpPort: document.getElementById('cfg-http-port'),
+        httpsPort: document.getElementById('cfg-https-port'),
+        uploadDir: document.getElementById('cfg-upload-dir'),
+        restartWarn: document.getElementById('cfg-restart-warn'),
         // Inference mode
-        radioLocal:      document.getElementById('radio-local'),
-        radioRemote:     document.getElementById('radio-remote'),
-        lblLocal:        document.getElementById('lbl-local'),
-        lblRemote:       document.getElementById('lbl-remote'),
-        panelLocal:      document.getElementById('panel-local'),
-        panelRemote:     document.getElementById('panel-remote'),
-        localEndpoint:   document.getElementById('cfg-local-endpoint'),
-        btnTestLocal:    document.getElementById('btn-test-local'),
+        radioLocal: document.getElementById('radio-local'),
+        radioRemote: document.getElementById('radio-remote'),
+        lblLocal: document.getElementById('lbl-local'),
+        lblRemote: document.getElementById('lbl-remote'),
+        panelLocal: document.getElementById('panel-local'),
+        panelRemote: document.getElementById('panel-remote'),
+        localEndpoint: document.getElementById('cfg-local-endpoint'),
+        btnTestLocal: document.getElementById('btn-test-local'),
         connStatusLocal: document.getElementById('conn-status-local'),
-        llamaBin:        document.getElementById('cfg-llama-bin'),
+        llamaBin: document.getElementById('cfg-llama-bin'),
         llamaBinVersion: document.getElementById('cfg-llama-bin-version'),
-        modelPath:       document.getElementById('cfg-model-path'),
-        mmprojPath:      document.getElementById('cfg-mmproj-path'),
-        contextSize:     document.getElementById('cfg-context-size'),
-        remoteEndpoint:      document.getElementById('cfg-remote-endpoint'),
-        btnTestRemote:       document.getElementById('btn-test-remote'),
-        connStatusRemote:    document.getElementById('conn-status-remote'),
+        modelPath: document.getElementById('cfg-model-path'),
+        mmprojPath: document.getElementById('cfg-mmproj-path'),
+        contextSize: document.getElementById('cfg-context-size'),
+        remoteEndpoint: document.getElementById('cfg-remote-endpoint'),
+        btnTestRemote: document.getElementById('btn-test-remote'),
+        connStatusRemote: document.getElementById('conn-status-remote'),
         // Download URLs
         sectionModelUrls: document.getElementById('section-model-urls'),
-        urlE2b:           document.getElementById('cfg-url-e2b'),
-        btnResetE2b:      document.getElementById('btn-reset-e2b'),
-        urlE4b:           document.getElementById('cfg-url-e4b'),
-        btnResetE4b:      document.getElementById('btn-reset-e4b'),
+        urlE2b: document.getElementById('cfg-url-e2b'),
+        btnResetE2b: document.getElementById('btn-reset-e2b'),
+        urlE4b: document.getElementById('cfg-url-e4b'),
+        btnResetE4b: document.getElementById('btn-reset-e4b'),
         // Save / SSL
-        btnSave:    document.getElementById('btn-save-cfg'),
-        cfgStatus:  document.getElementById('cfg-status'),
-        btnRegen:   document.getElementById('btn-regen-cert'),
+        btnSave: document.getElementById('btn-save-cfg'),
+        cfgStatus: document.getElementById('cfg-status'),
+        btnRegen: document.getElementById('btn-regen-cert'),
         certStatus: document.getElementById('cert-status'),
     },
 
     // ── Tab panels (not Store-backed, UI-only) ────────────
     tabs: {
-        qr:        document.getElementById('tab-qr'),
+        qr: document.getElementById('tab-qr'),
         dashboard: document.getElementById('tab-dashboard'),
-        config:    document.getElementById('tab-config'),
-        btns:      document.querySelectorAll('.tab-btn'),
+        config: document.getElementById('tab-config'),
+        btns: document.querySelectorAll('.tab-btn'),
     },
 };
 
@@ -184,26 +184,46 @@ const Renderer = {
         UI.server.valModel.textContent = modelLabel;
 
         const isRemote = d.remote_mode === true;
-        UI.server.btnStart.style.display     = (!d.ready && !isRemote) ? '' : 'none';
-        UI.server.btnStop.style.display      = (d.ready && !isRemote)  ? '' : 'none';
-        UI.server.rowStop.style.display      = isRemote ? 'none' : '';
+        UI.server.btnStart.style.display = (!d.ready && !isRemote) ? '' : 'none';
+        UI.server.btnStop.style.display = (d.ready && !isRemote) ? '' : 'none';
+        UI.server.rowStop.style.display = isRemote ? 'none' : '';
         UI.server.remoteNotice.style.display = isRemote ? '' : 'none';
 
         // Local-only cards
-        UI.bin.card.style.display            = isRemote ? 'none' : '';
-        UI.model.card.style.display          = isRemote ? 'none' : '';
+        UI.bin.card.style.display = isRemote ? 'none' : '';
+        UI.model.card.style.display = isRemote ? 'none' : '';
         UI.config.sectionModelUrls.style.display = isRemote ? 'none' : '';
 
         // Binary status (only meaningful in local mode)
-        UI.bin.dotBin.className   = `dot ${d.bin_present ? 'ok' : 'missing'}`;
+        UI.bin.dotBin.className = `dot ${d.bin_present ? 'ok' : 'missing'}`;
         UI.bin.valBin.textContent = d.bin_present ? `llama-${d.bin_version}` : 'not found';
         UI.bin.labelBin.textContent = d.bin_present ? 'Current Release' : 'Binary missing';
+
+        // ── 🛠️ GESTIONE DINAMICA TAB QR CODE (Via CSS ::before) ──
+        const btnQr = Array.from(UI.tabs.btns).find(b => b.dataset.tab === 'qr');
+
+        if (btnQr) {
+            if (d.ready) {
+                btnQr.classList.remove('disabled');
+                btnQr.title = 'Link smartphone disponibile';
+            } else {
+                btnQr.classList.add('disabled');
+                btnQr.title = 'Avvia llama-server per abilitare il QR Code';
+
+                // Se l'utente era sul tab QR e il server si spegne, torna alla dashboard
+                if (btnQr.classList.contains('active')) {
+                    const btnDash = Array.from(UI.tabs.btns).find(b => b.dataset.tab === 'dashboard');
+                    if (btnDash) btnDash.click();
+                }
+            }
+        }
+
     },
 
     config: (d) => {
         // GemmaLink Server
-        UI.config.httpHost.value  = d.http_host || '';
-        UI.config.httpPort.value  = d.http_port || '';
+        UI.config.httpHost.value = d.http_host || '';
+        UI.config.httpPort.value = d.http_port || '';
         UI.config.httpsPort.value = d.https_port || '';
         UI.config.uploadDir.value = d.upload_dir || '';
         UI.sys.refreshInput.value = d.sysinfo_refresh_seconds || 5;
@@ -214,12 +234,12 @@ const Renderer = {
         setLlamaMode(rem.enabled ? 'remote' : 'local');
 
         // Llama Local
-        UI.config.localEndpoint.value   = loc.endpoint || '';
-        UI.config.llamaBin.value        = loc.bin_path || loc.llama_bin || '';
+        UI.config.localEndpoint.value = loc.endpoint || '';
+        UI.config.llamaBin.value = loc.bin_path || loc.llama_bin || '';
         UI.config.llamaBinVersion.value = loc.llama_bin_version || '';
-        UI.config.modelPath.value       = loc.model_path || '';
-        UI.config.mmprojPath.value      = loc.mmproj_path || '';
-        UI.config.contextSize.value     = loc.ctx_size || loc.context_size || 2048;
+        UI.config.modelPath.value = loc.model_path || '';
+        UI.config.mmprojPath.value = loc.mmproj_path || '';
+        UI.config.contextSize.value = loc.ctx_size || loc.context_size || 2048;
 
         // Llama Remote
         UI.config.remoteEndpoint.value = rem.endpoint || '';
@@ -272,10 +292,10 @@ const Renderer = {
             UI.model.selector.options[0].selected = true;
 
         const variant = UI.model.selector.value;
-        const exists  = !!(d.variants[variant] || {}).model;
+        const exists = !!(d.variants[variant] || {}).model;
         const isActive = d.activePath && d.activePath.includes(variant);
 
-        UI.model.btnDl.style.display  = exists ? 'none' : '';
+        UI.model.btnDl.style.display = exists ? 'none' : '';
         UI.model.btnUse.style.display = (exists && !isActive) ? '' : 'none';
 
         UI.model.activeBadge.style.display = isActive ? '' : 'none';
@@ -369,23 +389,23 @@ const Actions = {
     },
     saveConfig: async () => {
         const payload = {
-            http_host:  UI.config.httpHost.value.trim(),
-            http_port:  UI.config.httpPort.value.trim(),
+            http_host: UI.config.httpHost.value.trim(),
+            http_port: UI.config.httpPort.value.trim(),
             https_port: UI.config.httpsPort.value.trim(),
             upload_dir: UI.config.uploadDir.value.trim(),
             sysinfo_refresh_seconds: parseInt(UI.sys.refreshInput.value) || 5,
             llama_remote: {
-                enabled:  UI.config.radioRemote.checked,
+                enabled: UI.config.radioRemote.checked,
                 endpoint: UI.config.remoteEndpoint.value.trim()
             },
             llama_local: {
-                enabled:           !UI.config.radioRemote.checked,
-                endpoint:          UI.config.localEndpoint.value.trim(),
-                llama_bin:         UI.config.llamaBin.value.trim(),
+                enabled: !UI.config.radioRemote.checked,
+                endpoint: UI.config.localEndpoint.value.trim(),
+                llama_bin: UI.config.llamaBin.value.trim(),
                 llama_bin_version: UI.config.llamaBinVersion.value.trim(),
-                model_path:        UI.config.modelPath.value.trim(),
-                mmproj_path:       UI.config.mmprojPath.value.trim(),
-                context_size:      parseInt(UI.config.contextSize.value.trim()) || 0
+                model_path: UI.config.modelPath.value.trim(),
+                mmproj_path: UI.config.mmprojPath.value.trim(),
+                context_size: parseInt(UI.config.contextSize.value.trim()) || 0
             },
             model_urls: {
                 e2b: UI.config.urlE2b.value.trim(),
@@ -448,8 +468,8 @@ async function streamDownload(url, progFill, progLabel, signal) {
                         progFill.style.width = e.pct + '%';
                         progLabel.textContent = `${e.pct}% — ${fmtGB(e.bytes)} / ${fmtGB(e.total)}`;
                     }
-                    if (e.done)  { progFill.style.background = '#44ff88'; progLabel.textContent = 'Done!'; return true; }
-                    if (e.info)  { Actions.addLog(e.info, 'ok'); }
+                    if (e.done) { progFill.style.background = '#44ff88'; progLabel.textContent = 'Done!'; return true; }
+                    if (e.info) { Actions.addLog(e.info, 'ok'); }
                     if (e.error) { progFill.style.background = '#ff4444'; progLabel.textContent = 'Error: ' + e.error; Actions.addLog('Download error: ' + e.error, 'err'); return false; }
                 } catch { /* skip malformed line */ }
             }
@@ -466,11 +486,11 @@ async function streamDownload(url, progFill, progLabel, signal) {
 // --- 6. INITIALIZATION ---
 function setLlamaMode(mode) {
     const isRemote = mode === 'remote';
-    UI.config.radioLocal.checked  = !isRemote;
+    UI.config.radioLocal.checked = !isRemote;
     UI.config.radioRemote.checked = isRemote;
     UI.config.lblLocal.classList.toggle('active', !isRemote);
     UI.config.lblRemote.classList.toggle('active', isRemote);
-    UI.config.panelLocal.style.display  = isRemote ? 'none' : '';
+    UI.config.panelLocal.style.display = isRemote ? 'none' : '';
     UI.config.panelRemote.style.display = isRemote ? '' : 'none';
 }
 
@@ -510,7 +530,7 @@ function init() {
         UI.bin.selector.innerHTML = '<option value="">Loading releases…</option>';
         Actions.loadLlamaReleases();
     });
-    UI.bin.selector.onchange   = () => Renderer.server(Store.server.data);
+    UI.bin.selector.onchange = () => Renderer.server(Store.server.data);
 
     // ── llama-server Binary ───────────────────────────────────
     let llamaDlController = null;
@@ -526,12 +546,12 @@ function init() {
         await fetch(`/api/llama/select?tag=${encodeURIComponent(tag)}&url=${encodeURIComponent(assetURL)}`, { method: 'POST' });
 
         llamaDlController = new AbortController();
-        UI.bin.btnDl.style.display     = 'none';
+        UI.bin.btnDl.style.display = 'none';
         UI.bin.btnCancel.style.display = '';
         UI.bin.progWrap.classList.add('visible');
-        UI.bin.progFill.style.width      = '0%';
+        UI.bin.progFill.style.width = '0%';
         UI.bin.progFill.style.background = '';
-        UI.bin.progLabel.textContent     = 'Starting…';
+        UI.bin.progLabel.textContent = 'Starting…';
         Actions.addLog(`Downloading llama-server ${tag}…`, 'ok');
 
         const ok = await streamDownload('/api/download?target=llama', UI.bin.progFill, UI.bin.progLabel, llamaDlController.signal);
@@ -571,7 +591,7 @@ function init() {
     UI.config.btnSave.onclick = () => Actions.saveConfig();
 
     // ── Gemma Model ───────────────────────────────────────────
-    let modelDlController  = null;
+    let modelDlController = null;
     let mmprojDlController = null;
 
     UI.model.btnDl.addEventListener('click', async () => {
@@ -579,12 +599,12 @@ function init() {
         if (!variant) return;
 
         modelDlController = new AbortController();
-        UI.model.btnDl.style.display     = 'none';
+        UI.model.btnDl.style.display = 'none';
         UI.model.btnCancel.style.display = '';
         UI.model.progWrap.classList.add('visible');
-        UI.model.progFill.style.width      = '0%';
+        UI.model.progFill.style.width = '0%';
         UI.model.progFill.style.background = '';
-        UI.model.progLabel.textContent     = 'Starting…';
+        UI.model.progLabel.textContent = 'Starting…';
         Actions.addLog(`Downloading model for ${variant.toUpperCase()}…`, 'ok');
 
         const ok = await streamDownload(`/api/download?target=model-${variant}`, UI.model.progFill, UI.model.progLabel, modelDlController.signal);
@@ -631,9 +651,9 @@ function init() {
                 // mmproj non presente — scaricalo prima
                 mmprojDlController = new AbortController();
                 UI.model.progWrap.classList.add('visible');
-                UI.model.progFill.style.width      = '0%';
+                UI.model.progFill.style.width = '0%';
                 UI.model.progFill.style.background = '';
-                UI.model.progLabel.textContent     = 'Downloading mmproj…';
+                UI.model.progLabel.textContent = 'Downloading mmproj…';
                 Actions.addLog(`Downloading mmproj for ${variant.toUpperCase()}…`, 'ok');
 
                 const ok = await streamDownload(`/api/download?target=mmproj-${variant}`, UI.model.progFill, UI.model.progLabel, mmprojDlController.signal);
@@ -660,15 +680,15 @@ function init() {
 
     // ── Start / Stop llama-server ─────────────────────────────
     UI.server.btnStart.addEventListener('click', async () => {
-        UI.server.btnStart.disabled    = true;
+        UI.server.btnStart.disabled = true;
         UI.server.btnStart.textContent = '⏳ Starting…';
         Actions.addLog('Starting llama-server — loading model, please wait…', 'ok');
         try {
             const d = await fetch('/api/llama/start', { method: 'POST' }).then(r => r.json());
             if (d.error) Actions.addLog('Start failed: ' + d.error, 'err');
-            else         Actions.addLog('llama-server is ready.', 'ok');
+            else Actions.addLog('llama-server is ready.', 'ok');
         } catch (e) { Actions.addLog('Start failed: ' + e.message, 'err'); }
-        UI.server.btnStart.disabled    = false;
+        UI.server.btnStart.disabled = false;
         UI.server.btnStart.textContent = '▶ Start llama-server';
         const status = await fetch('/api/status').then(r => r.json());
         Actions.sync('server', status);
@@ -676,14 +696,14 @@ function init() {
     });
 
     UI.server.btnStop.addEventListener('click', async () => {
-        UI.server.btnStop.disabled    = true;
+        UI.server.btnStop.disabled = true;
         UI.server.btnStop.textContent = '⏳ Stopping…';
         Actions.addLog('Stopping llama-server…', 'warn');
         try {
             await fetch('/api/llama/stop', { method: 'POST' });
             Actions.addLog('llama-server stopped.', 'warn');
         } catch (e) { Actions.addLog('Stop failed: ' + e.message, 'err'); }
-        UI.server.btnStop.disabled    = false;
+        UI.server.btnStop.disabled = false;
         UI.server.btnStop.textContent = '■ Stop llama-server';
         const status = await fetch('/api/status').then(r => r.json());
         Actions.sync('server', status);
@@ -693,7 +713,7 @@ function init() {
         radio.addEventListener('change', (e) => setLlamaMode(e.target.value));
     });
 
-    UI.config.btnTestLocal.onclick  = () => Actions.testConn('local');
+    UI.config.btnTestLocal.onclick = () => Actions.testConn('local');
     UI.config.btnTestRemote.onclick = () => Actions.testConn('remote');
 
     UI.config.btnResetE2b.onclick = () => { UI.config.urlE2b.value = DEFAULT_URLS.e2b; };

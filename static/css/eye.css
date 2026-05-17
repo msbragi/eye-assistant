@@ -1,207 +1,406 @@
-    * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
+:root {
+    --accent: #4f46e5;
+    --bg-dark: #0a0a0a;
+    --glass: rgba(255, 255, 255, 0.1);
+    --panel-bg: rgba(15, 15, 15, 0.9);
+}
+
+body,
+html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-dark);
+    color: white;
+    font-family: -apple-system, system-ui, sans-serif;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- CONTROLLO MODALITÀ (In alto fisso) --- */
+.mode-selector {
+    display: flex;
+    gap: 0.5rem;
+    padding: 10px;
+    background: #111;
+    z-index: 20;
+    flex-shrink: 0;
+    border-bottom: 1px solid #222;
+}
+
+.mode-btn {
+    flex: 1;
+    padding: 12px;
+    background: #222;
+    color: #aaa;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+body.mode-vision #btn-mode-vision {
+    background: #44ff88;
+    color: #111;
+    font-weight: bold;
+}
+
+body.mode-text #btn-mode-text {
+    background: #44ff88;
+    color: #111;
+    font-weight: bold;
+}
+
+body.server-no-vision #mode-selector {
+    display: none !important;
+}
+
+/* --- CONTAINER PRINCIPALE --- */
+.ui-container {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 10;
+}
+
+/* --- LAYER FOTOCAMERA --- */
+#camera-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: #000;
+    display: none;
+}
+
+/* Mostra la fotocamera SOLO in modalità Vision e SOLO nello stato Preview */
+body.mode-vision[data-state="preview"] #camera-layer {
+    display: block;
+}
+
+#video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.finder-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 260px;
+    height: 260px;
+    border: 1.5px solid rgba(255, 255, 255, 0.6);
+    border-radius: 32px;
+    box-shadow: 0 0 0 5000px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* --- MACCHINA A STATI E INTERFACCIA --- */
+#snapshot {
+    display: none;
+    height: 25%;
+    object-fit: cover;
+    border: 2px solid var(--accent);
+    flex-shrink: 0;
+    z-index: 2;
+    border-radius: 15px;
+}
+
+/* Mostra lo snapshot acquisito negli stati Ask e Response (solo se eravamo in Vision) */
+body.mode-vision[data-state="ask"] #snapshot,
+body.mode-vision[data-state="response"] #snapshot {
+    display: block;
+}
+
+/* Gestione visibilità sezioni */
+.state-preview,
+.state-ask,
+.state-response {
+    display: none;
+}
+
+body[data-state="preview"] .state-preview {
+    display: flex;
+}
+
+body[data-state="ask"] .state-ask {
+    display: flex;
+}
+
+body[data-state="response"] .state-response {
+    display: flex;
+}
+
+/* STATE: PREVIEW (Solo in modalità Vision) */
+.state-preview {
+    position: absolute;
+    bottom: 40px;
+    left: 0;
+    width: 100%;
+    justify-content: center;
+    z-index: 5;
+}
+
+.fab-capture {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    border: 4px solid white;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.fab-capture::after {
+    content: '';
+    width: 56px;
+    height: 56px;
+    background: white;
+    border-radius: 50%;
+}
+
+/* STATE: ASK (Flessibile, si adatta se c'è lo snapshot o meno) */
+.state-ask {
+    flex: 1;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 15px;
+    box-sizing: border-box;
+    z-index: 5;
+}
+
+/* Centra il box di testo se siamo in modalità "Solo Testo" per riempire il vuoto */
+body.mode-text .state-ask {
+    justify-content: center;
+}
+
+/* Nasconde il carosello dei preset quando siamo in modalità Solo Testo */
+body.mode-text .presets-container {
+    display: none !important;
+}
+
+body.mode-text textarea {
+    height: 35vh;
+    /* Occupa circa un terzo dell'altezza totale dello schermo */
+    font-size: 18px;
+    /* Leggermente più grande per facilitare la lettura */
+}
+
+.interaction-sheet {
+    background: var(--panel-bg);
+    backdrop-filter: blur(20px);
+    padding: 20px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.presets-container {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 15px;
+    scrollbar-width: none;
+}
+
+.presets-container::-webkit-scrollbar {
+    display: none;
+}
+
+.chip {
+    background: #222;
+    color: white;
+    border: 1px solid #333;
+    padding: 8px 16px;
+    border-radius: 20px;
+    white-space: nowrap;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+textarea {
+    width: 100%;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: white;
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 16px;
+    resize: none;
+    box-sizing: border-box;
+    margin-bottom: 15px;
+}
+
+/* STATE: RESPONSE */
+.state-response {
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 5;
+}
+
+.response-panel {
+    flex: 1;
+    background: var(--panel-bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.response-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    font-size: 16px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.loader-bar {
+    height: 3px;
+    width: 100%;
+    background: #222;
+    position: relative;
+    overflow: hidden;
+}
+
+.loader-bar.active::after {
+    content: '';
+    position: absolute;
+    height: 100%;
+    width: 40%;
+    background: var(--accent);
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% {
+        left: -40%;
     }
 
-    body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #0f0f0f;
-        color: #f0f0f0;
-        min-height: 100dvh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
+    100% {
+        left: 110%;
+    }
+}
+
+.btn-group {
+    display: flex;
+    gap: 10px;
+    padding: 15px;
+    flex-shrink: 0;
+}
+
+.btn {
+    flex: 1;
+    padding: 15px;
+    border-radius: 12px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: white;
+}
+
+.btn-secondary {
+    background: #333;
+    color: white;
+}
+
+.btn:disabled {
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+/* --- OVERLAY DI BOOT --- */
+#boot-overlay {
+    position: fixed;
+    inset: 0;
+    background: #111;
+    color: #fff;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+#boot-overlay .boot-loader,
+#boot-overlay .boot-error {
+    display: none;
+}
+
+#boot-overlay.loading .boot-loader {
+    display: block;
+}
+
+#boot-overlay.error .boot-error {
+    display: block;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #333;
+    border-top: 4px solid #44ff88;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
     }
 
-    body>header,
-    body>main {
-        width: 100%;
-        max-width: 520px;
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.btn-retry {
+    background: #44ff88;
+    color: #111;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 1rem;
+}
+
+.thinking-placeholder {
+    color: #888;
+    font-style: italic;
+    animation: pulse 1.5s infinite ease-in-out;
+    padding: 10px;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 0.5;
     }
 
-    header {
-        padding: 16px 20px;
-        background: #1a1a1a;
-        border-bottom: 1px solid #2a2a2a;
-        display: flex;
-        align-items: center;
-        gap: 10px;
+    50% {
+        opacity: 1;
     }
 
-    header h1 {
-        font-size: 1.2rem;
-        font-weight: 600;
+    100% {
+        opacity: 0.5;
     }
-
-    #status-dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: #ff4444;
-        flex-shrink: 0;
-    }
-
-    #status-dot.ready {
-        background: #44ff88;
-    }
-
-    main {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        padding: 16px;
-        gap: 16px;
-    }
-
-    /* Camera / Preview area */
-    #preview-container {
-        position: relative;
-        width: 100%;
-        background: #1a1a1a;
-        border-radius: 12px;
-        overflow: hidden;
-        aspect-ratio: 4/3;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    #preview-container video,
-    #preview-container img#snapshot {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-
-    #snapshot {
-        display: none;
-    }
-
-    #cam-placeholder {
-        position:absolute;
-        color: #555;
-        font-size: 0.9rem;
-        text-align: center;
-        padding: 20px;
-    }
-
-    /* Preset mode buttons */
-    .presets {
-        display: flex;
-        gap: 8px;
-        overflow-x: auto;
-        padding-bottom: 4px;
-    }
-
-    .preset-btn {
-        flex-shrink: 0;
-        background: #1e1e2e;
-        border: 1px solid #333;
-        color: #ccc;
-        border-radius: 20px;
-        padding: 6px 14px;
-        font-size: 0.85rem;
-        cursor: pointer;
-        white-space: nowrap;
-    }
-
-    .preset-btn:hover,
-    .preset-btn.active {
-        background: #5865f2;
-        border-color: #5865f2;
-        color: #fff;
-    }
-
-    /* Question input */
-    .input-row {
-        display: flex;
-        gap: 8px;
-    }
-
-    #question {
-        flex: 1;
-        background: #1a1a1a;
-        border: 1px solid #333;
-        border-radius: 8px;
-        color: #f0f0f0;
-        padding: 10px 14px;
-        font-size: 0.95rem;
-        resize: none;
-        min-height: 48px;
-    }
-
-    #question:focus {
-        outline: none;
-        border-color: #5865f2;
-    }
-
-    /* Action buttons */
-    .actions {
-        display: flex;
-        gap: 8px;
-    }
-
-    .btn {
-        flex: 1;
-        padding: 12px;
-        border: none;
-        border-radius: 8px;
-        font-size: 0.95rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: opacity 0.15s;
-    }
-
-    .btn:disabled {
-        opacity: 0.4;
-        cursor: default;
-    }
-
-    #btn-camera {
-        background: #2a2a3a;
-        color: #ccc;
-    }
-
-    #btn-ask {
-        background: #5865f2;
-        color: #fff;
-    }
-
-    /* Answer area */
-    #answer-box {
-        background: #1a1a1a;
-        border-radius: 12px;
-        padding: 14px;
-        font-size: 0.95rem;
-        line-height: 1.6;
-        min-height: 80px;
-        white-space: pre-wrap;
-        color: #e0e0e0;
-        display: none;
-    }
-
-    #answer-box.visible {
-        display: block;
-    }
-
-    #answer-box.loading {
-        color: #888;
-        font-style: italic;
-    }
-
-    .clear-btn {
-        background: none;
-        border: 1px solid #333;
-        color: #888;
-        border-radius: 8px;
-        padding: 8px 16px;
-        cursor: pointer;
-        font-size: 0.85rem;
-        width: 100%;
-    }
-
-    .clear-btn:hover {
-        border-color: #555;
-        color: #ccc;
-    }
+}
